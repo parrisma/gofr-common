@@ -1,0 +1,107 @@
+[project]
+name = "gofr-common"
+version = "1.0.0"
+description = "Shared infrastructure library for GOFR projects (auth, logging, config, MCP utilities)"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.11"
+
+# Core dependencies shared by ALL GOFR projects
+dependencies = [
+    # MCP Protocol
+    "mcp>=0.9.0",
+    
+    # Web Framework Stack
+    "pydantic>=2.0.0",
+    "uvicorn>=0.20.0",
+    "fastapi>=0.100.0",
+    "starlette>=0.27.0",
+    "sse-starlette>=1.6.0",
+    
+    # Authentication
+    "PyJWT>=2.8.0",
+    
+    # HTTP Client
+    "httpx>=0.24.0",
+    
+    # MCP OpenAPI Wrapper
+    "mcpo>=0.0.19",
+]
+
+[project.optional-dependencies]
+# Development dependencies
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "pyright>=1.1.0",
+]
+
+# Optional: PDF/document rendering (needed by gofr-doc, gofr-dig)
+pdf = [
+    "WeasyPrint>=60.0",
+    "Jinja2>=3.1.0",
+    "html2text>=2020.1.16",
+]
+
+# Optional: Graphing/plotting (needed by gofr-plot)
+plotting = [
+    "matplotlib>=3.5.0",
+]
+
+# All optional dependencies
+all = [
+    "gofr-common[dev,pdf,plotting]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gofr_common"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/README.md",
+    "/LICENSE",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]  # Line length handled by black
+
+[tool.pyright]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::RuntimeWarning:matplotlib",
+    "ignore::DeprecationWarning",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "pyright>=1.1.0",
+]
