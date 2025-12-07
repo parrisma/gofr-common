@@ -620,6 +620,7 @@ git commit -m "Update gofr-common to latest"
 
 - [x] ~~Standardize `scripts/restart_servers.sh` across projects~~ ✅ Complete
 - [x] ~~Standardize `scripts/token_manager.sh` as CLI tool~~ ✅ Complete
+- [x] ~~Storage manager consolidation~~ ❌ Deferred - only gofr-doc/gofr-plot have storage, different abstractions (Documents vs Images)
 - [ ] Consider production Dockerfile standardization
 - [ ] Consider CI/CD pipeline standardization
 
