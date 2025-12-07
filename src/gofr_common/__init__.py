@@ -5,7 +5,7 @@ This package provides common functionality shared across all GOFR projects:
 - testing: Code quality testing utilities (ruff, pyright integration)
 - auth: JWT authentication services and FastAPI middleware
 - config: Configuration management with typed settings
-- exceptions: Common exception classes (coming soon)
+- exceptions: Common exception classes with structured error info
 """
 
 __version__ = "1.0.0"
@@ -45,6 +45,15 @@ from gofr_common.config import (
     reset_settings,
 )
 
+from gofr_common.exceptions import (
+    GofrError,
+    ValidationError,
+    ResourceNotFoundError,
+    SecurityError,
+    ConfigurationError,
+    RegistryError,
+)
+
 __all__ = [
     "__version__",
     # Logger
@@ -73,4 +82,11 @@ __all__ = [
     "LogSettings",
     "get_settings",
     "reset_settings",
+    # Exceptions
+    "GofrError",
+    "ValidationError",
+    "ResourceNotFoundError",
+    "SecurityError",
+    "ConfigurationError",
+    "RegistryError",
 ]
