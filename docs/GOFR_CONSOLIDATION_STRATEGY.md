@@ -618,8 +618,8 @@ git commit -m "Update gofr-common to latest"
 
 ### Phase 8: Additional Consolidation Opportunities (Optional)
 
-- [ ] Standardize `scripts/restart_servers.sh` across projects
-- [ ] Standardize `scripts/token_manager.sh` as CLI tool
+- [x] ~~Standardize `scripts/restart_servers.sh` across projects~~ ✅ Complete
+- [x] ~~Standardize `scripts/token_manager.sh` as CLI tool~~ ✅ Complete
 - [ ] Consider production Dockerfile standardization
 - [ ] Consider CI/CD pipeline standardization
 
