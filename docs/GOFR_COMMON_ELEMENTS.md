@@ -18,6 +18,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 1.1 JWT Authentication Service (`app/auth/service.py`)
+
 - **Similarity:** 85-95% identical across all projects
 - **Core Functionality:**
   - JWT token creation and validation
@@ -32,6 +33,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract to shared library with configurable environment prefix
 
 #### 1.2 Authentication Middleware (`app/auth/middleware.py`)
+
 - **Similarity:** 75-85% identical
 - **Core Functionality:**
   - FastAPI/Starlette security integration
@@ -45,6 +47,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract with plugin architecture for extended features
 
 #### 1.3 Startup Auth Configuration (`app/startup/auth_config.py`)
+
 - **Similarity:** 70-80% identical
 - **Core Functionality:**
   - Resolve JWT secret from CLI args, environment, or auto-generation
@@ -63,6 +66,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 2.1 Logger Interface (`app/logger/interface.py`)
+
 - **Similarity:** 100% identical across all projects
 - **Interface Methods:**
   - `debug()`, `info()`, `warning()`, `error()`, `critical()`
@@ -72,6 +76,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Perfect candidate for shared library - zero customization needed
 
 #### 2.2 Console Logger (`app/logger/console_logger.py`)
+
 - **Similarity:** 95% identical
 - **Core Functionality:**
   - Python logging module wrapper
@@ -84,6 +89,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract with configurable logger name parameter
 
 #### 2.3 Default Logger (`app/logger/default_logger.py`)
+
 - **Similarity:** 100% identical (where present)
 - **Functionality:** Provides session-scoped logger singleton
 
@@ -96,6 +102,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 3.1 Config Class (`app/config.py`)
+
 - **Similarity:** 85-90% identical (gofr-dig, gofr-np, gofr-doc)
 - **Core Functionality:**
   - Data directory resolution
@@ -116,6 +123,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 4.1 Base Exception Classes (`app/exceptions/base.py`)
+
 - **Similarity:** 90-95% identical
 - **Common Classes:**
   - `GofrXxxError` (base exception with structured error info)
@@ -131,6 +139,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract as generic base classes with project-specific naming
 
 #### 4.2 Error Mapping (`app/errors/mapper.py`)
+
 - **Similarity:** Present in gofr-dig, gofr-np, gofr-doc
 - **Functionality:**
   - Maps exceptions to MCP-compatible error responses
@@ -146,6 +155,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 5.1 MCP Server Structure (`app/mcp_server/mcp_server.py`)
+
 - **Similarity:** 60-70% structural similarity
 - **Common Patterns:**
   - Streamable HTTP transport setup
@@ -161,6 +171,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract common server scaffolding, tool registry, and response helpers
 
 #### 5.2 MCP Tool Patterns
+
 - **Common Tool Structure:**
   - `@app.list_tools()` decorator pattern
   - `@app.call_tool()` decorator pattern
@@ -176,6 +187,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 6.1 Web Server Structure (`app/web_server/web_server.py`)
+
 - **Similarity:** 50-60% structural similarity
 - **Common Patterns:**
   - FastAPI/Starlette application setup
@@ -197,6 +209,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 7.1 Base Dockerfile (`docker/Dockerfile.base`)
+
 - **Similarity:** 100% identical across all projects
 - **Components:**
   - Ubuntu 22.04 base
@@ -209,6 +222,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** **HIGHEST PRIORITY** - Use single shared Dockerfile.base
 
 #### 7.2 Development Entrypoint (`docker/entrypoint-dev.sh`)
+
 - **Similarity:** 85-90% identical
 - **Functionality:**
   - Data directory permission fixes
@@ -221,6 +235,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract with parameterized paths and user names
 
 #### 7.3 Build Scripts (`docker/build-*.sh`, `docker/run-*.sh`)
+
 - **Similarity:** 70-80% similar patterns
 - **Common Patterns:**
   - Docker build with build args
@@ -237,6 +252,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 8.1 Server Restart Scripts (`scripts/restart_servers.sh`)
+
 - **Similarity:** 75-85% identical
 - **Common Functionality:**
   - Kill existing server processes
@@ -252,6 +268,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract with configuration file-based customization
 
 #### 8.2 Token Manager Scripts (`scripts/token_manager.sh`)
+
 - **Similarity:** 90-95% identical (where present)
 - **Functionality:**
   - JWT token creation
@@ -268,6 +285,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 9.1 Pytest Configuration (`pyproject.toml` - tool.pytest.ini_options)
+
 - **Similarity:** 95% identical
 - **Common Settings:**
   - `asyncio_mode = "auto"`
@@ -277,6 +295,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Extract as shared pytest configuration template
 
 #### 9.2 Test Structure
+
 - **Common Patterns:**
   - `test/` directory structure
   - Async test patterns
@@ -291,6 +310,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 10.1 Project Metadata (`pyproject.toml`)
+
 - **Similarity:** 70-80% identical
 - **Common Configuration:**
   - Python >= 3.11 requirement
@@ -303,6 +323,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Create shared pyproject.toml template with project-specific overlays
 
 #### 10.2 Common Dependencies
+
 - **Universal Across All Projects:**
   - `mcp>=0.9.0`
   - `pydantic>=2.0`
@@ -323,6 +344,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 ### Common Components
 
 #### 11.1 Git Ignore Patterns (`.gitignore`)
+
 - **Common Patterns:**
   - Python cache (`__pycache__/`, `*.pyc`)
   - Virtual environments (`.venv/`)
@@ -334,6 +356,7 @@ All four GOFR projects share substantial common infrastructure that is currently
 **Recommendation:** Create shared .gitignore template
 
 #### 11.2 VS Code Configuration (`.vscode/`)
+
 - **Common Settings:**
   - Python interpreter path
   - Formatting settings
@@ -346,18 +369,21 @@ All four GOFR projects share substantial common infrastructure that is currently
 ## Summary of Extractable Components
 
 ### Priority 1 (Immediate High Value)
+
 1. **Docker base image** - 100% identical, used by all projects
 2. **Logger infrastructure** - 95%+ identical, core dependency
 3. **Auth service** - 85%+ identical, security-critical
 4. **Exception base classes** - 90%+ identical, contracts
 
 ### Priority 2 (High Value)
+
 5. **Configuration management** - 85%+ identical
 6. **MCP server scaffolding** - Common patterns and utilities
 7. **Token manager utilities** - 90%+ identical
 8. **Build/deployment scripts** - 75%+ identical patterns
 
 ### Priority 3 (Medium Value)
+
 9. **Web server scaffolding** - Common middleware and patterns
 10. **Test utilities and fixtures** - Shared testing infrastructure
 11. **Project templates** - pyproject.toml, .gitignore, etc.
@@ -385,12 +411,14 @@ All four GOFR projects share substantial common infrastructure that is currently
 ## Risk Assessment
 
 ### Risks of Current Duplication
+
 1. **Inconsistent Security:** Bug fixes in auth must be applied 4 times
 2. **Drift Over Time:** Projects diverging despite identical requirements
 3. **Testing Burden:** Core infrastructure tested 4 times independently
 4. **Onboarding Friction:** New developers must learn 4 versions of same code
 
 ### Risks of Consolidation
+
 1. **Breaking Changes:** Refactoring may introduce regressions
 2. **Dependency Hell:** Shared library version conflicts
 3. **Coordination Overhead:** Changes require multi-repo coordination
