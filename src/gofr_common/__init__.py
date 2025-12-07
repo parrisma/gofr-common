@@ -4,7 +4,7 @@ This package provides common functionality shared across all GOFR projects:
 - logger: Flexible logging with session tracking and JSON support
 - testing: Code quality testing utilities (ruff, pyright integration)
 - auth: JWT authentication services and FastAPI middleware
-- config: Configuration management (coming soon)
+- config: Configuration management with typed settings
 - exceptions: Common exception classes (coming soon)
 """
 
@@ -34,6 +34,17 @@ from gofr_common.auth import (
     optional_verify_token,
 )
 
+from gofr_common.config import (
+    Config,
+    Settings,
+    ServerSettings,
+    AuthSettings,
+    StorageSettings,
+    LogSettings,
+    get_settings,
+    reset_settings,
+)
+
 __all__ = [
     "__version__",
     # Logger
@@ -53,4 +64,13 @@ __all__ = [
     "get_auth_service",
     "verify_token",
     "optional_verify_token",
+    # Config
+    "Config",
+    "Settings",
+    "ServerSettings",
+    "AuthSettings",
+    "StorageSettings",
+    "LogSettings",
+    "get_settings",
+    "reset_settings",
 ]
