@@ -2,6 +2,7 @@
 
 This package provides common functionality shared across all GOFR projects:
 - logger: Flexible logging with session tracking and JSON support
+- testing: Code quality testing utilities (ruff, pyright integration)
 - auth: Authentication services and middleware (coming soon)
 - config: Configuration management (coming soon)
 - exceptions: Common exception classes (coming soon)
@@ -19,6 +20,11 @@ from gofr_common.logger import (
     create_logger,
 )
 
+from gofr_common.testing import (
+    CheckResult,
+    CodeQualityChecker,
+)
+
 __all__ = [
     "__version__",
     # Logger
@@ -28,4 +34,7 @@ __all__ = [
     "StructuredLogger",
     "get_logger",
     "create_logger",
+    # Testing
+    "CheckResult",
+    "CodeQualityChecker",
 ]
