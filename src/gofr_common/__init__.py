@@ -6,6 +6,7 @@ This package provides common functionality shared across all GOFR projects:
 - auth: JWT authentication services and FastAPI middleware
 - config: Configuration management with typed settings
 - exceptions: Common exception classes with structured error info
+- mcp: MCP response formatting and error handling utilities
 """
 
 __version__ = "1.0.0"
@@ -54,6 +55,14 @@ from gofr_common.exceptions import (
     RegistryError,
 )
 
+from gofr_common.mcp import (
+    json_text,
+    success_response,
+    error_response,
+    format_validation_error,
+    MCPResponseBuilder,
+)
+
 __all__ = [
     "__version__",
     # Logger
@@ -89,4 +98,10 @@ __all__ = [
     "SecurityError",
     "ConfigurationError",
     "RegistryError",
+    # MCP
+    "json_text",
+    "success_response",
+    "error_response",
+    "format_validation_error",
+    "MCPResponseBuilder",
 ]
