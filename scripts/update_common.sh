@@ -3,9 +3,9 @@
 # Run this from a project that contains gofr-common as a submodule
 #
 # Usage:
-#   ./scripts/update_common.sh              # Update to latest main
-#   ./scripts/update_common.sh --commit     # Update and commit the change
-#   ./scripts/update_common.sh --status     # Just show current status
+#   ./lib/gofr-common/scripts/update_common.sh              # Update to latest main
+#   ./lib/gofr-common/scripts/update_common.sh --commit     # Update and commit the change
+#   ./lib/gofr-common/scripts/update_common.sh --status     # Just show current status
 
 set -euo pipefail
 
@@ -16,12 +16,24 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get script directory and project root
+# Get script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Common submodule location
-COMMON_PATH="${PROJECT_ROOT}/lib/gofr-common"
+# Detect if we're inside the submodule (lib/gofr-common/scripts)
+# or in a project's own scripts directory
+if [[ "$SCRIPT_DIR" == */lib/gofr-common/scripts ]]; then
+    # Running from inside the submodule - go up 3 levels
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+    COMMON_PATH="${PROJECT_ROOT}/lib/gofr-common"
+elif [[ "$SCRIPT_DIR" == */scripts ]]; then
+    # Running from project's scripts directory - go up 1 level
+    PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    COMMON_PATH="${PROJECT_ROOT}/lib/gofr-common"
+else
+    # Unknown location - try current directory
+    PROJECT_ROOT="$(pwd)"
+    COMMON_PATH="${PROJECT_ROOT}/lib/gofr-common"
+fi
 
 # Parse arguments
 DO_COMMIT=false
