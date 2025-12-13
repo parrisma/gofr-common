@@ -222,7 +222,14 @@ echo ""
 echo "Step 4: Starting Web server ($GOFR_WEB_HOST:$GOFR_WEB_PORT)..."
 echo "-----------------------------------------------------------------------"
 
+# Add --no-auth for TEST environment
+WEB_AUTH_FLAG=""
+if [ "$GOFR_ENV" = "TEST" ]; then
+    WEB_AUTH_FLAG="--no-auth"
+fi
+
 nohup uv run python -m app.main_web \
+    $WEB_AUTH_FLAG \
     --host $GOFR_WEB_HOST \
     --port $GOFR_WEB_PORT \
     $GOFR_WEB_EXTRA_ARGS \
