@@ -176,9 +176,19 @@ echo ""
 echo "Step 2: Starting MCP server ($GOFR_MCP_HOST:$GOFR_MCP_PORT)..."
 echo "-----------------------------------------------------------------------"
 
+# Conditional authentication: check for JWT credentials
+MCP_AUTH_ARGS=""
+if [ -n "$GOFR_JWT_SECRET" ] && [ -n "$GOFR_TOKEN_STORE" ]; then
+    MCP_AUTH_ARGS="--jwt-secret $GOFR_JWT_SECRET --token-store $GOFR_TOKEN_STORE"
+    echo "  Authentication: ENABLED (JWT)"
+else
+    MCP_AUTH_ARGS="--no-auth"
+    echo "  Authentication: DISABLED (--no-auth)"
+fi
+
 cd "$GOFR_PROJECT_ROOT"
 nohup uv run python -m app.main_mcp \
-    --no-auth \
+    $MCP_AUTH_ARGS \
     --host $GOFR_MCP_HOST \
     --port $GOFR_MCP_PORT \
     $GOFR_MCP_EXTRA_ARGS \
