@@ -4,6 +4,7 @@ Uses separate metadata and blob repositories for better separation of concerns.
 """
 
 import uuid
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
@@ -288,8 +289,8 @@ class FileStorage(StorageBase):
             guid: GUID to associate with alias
             group: Group name (required for aliases)
         """
-        if not alias or not alias.isalnum():
-            raise ValueError("Alias must be alphanumeric")
+        if not alias or not re.match(r"^[a-zA-Z0-9_-]+$", alias):
+            raise ValueError("Alias must be alphanumeric (hyphens and underscores allowed)")
             
         # Check if alias already exists for this group
         if group in self._alias_to_guid and alias in self._alias_to_guid[group]:
