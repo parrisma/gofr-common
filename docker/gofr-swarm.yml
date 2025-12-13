@@ -1,0 +1,615 @@
+# =============================================================================
+# GOFR Master Docker Swarm Stack
+# =============================================================================
+# Deploys all GOFR services, infrastructure, and supporting tools
+#
+# Services:
+#   - Infrastructure: Neo4j, ChromaDB
+#   - GOFR Apps: plot, doc, dig, iq, np
+#   - Tools: n8n (workflow automation), Open WebUI (AI chat interface)
+#   - Backup: Scheduled backup service for all volumes
+#
+# Usage:
+#   # Initialize swarm (first time only)
+#   docker swarm init
+#
+#   # Deploy the stack
+#   docker stack deploy -c gofr-swarm.yml gofr
+#
+#   # View services
+#   docker service ls
+#
+#   # View logs
+#   docker service logs gofr_<service-name>
+#
+#   # Scale a service
+#   docker service scale gofr_<service-name>=N
+#
+#   # Remove the stack
+#   docker stack rm gofr
+#
+# Environment Variables (create .env file or export):
+#   - JWT_SECRET: Shared JWT secret for all GOFR services
+#   - NEO4J_PASSWORD: Password for Neo4j (default: gofr-neo4j-password)
+#   - N8N_ENCRYPTION_KEY: Encryption key for n8n credentials
+#   - OPENAI_API_KEY: API key for Open WebUI LLM integration
+#   - BACKUP_RETENTION_DAYS: Days to retain backups (default: 7)
+#   - BACKUP_SCHEDULE: Cron schedule for backups (default: 0 2 * * *)
+#
+# =============================================================================
+
+version: "3.8"
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  gofr-net:
+    driver: overlay
+    attachable: true
+  gofr-internal:
+    driver: overlay
+    internal: true
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  # Infrastructure
+  gofr-neo4j-data:
+  gofr-neo4j-logs:
+  gofr-chroma-data:
+  
+  # GOFR Services
+  gofr-plot-data:
+  gofr-plot-logs:
+  gofr-doc-data:
+  gofr-doc-logs:
+  gofr-dig-data:
+  gofr-dig-logs:
+  gofr-iq-data:
+  gofr-iq-logs:
+  gofr-np-data:
+  gofr-np-logs:
+  
+  # Tools
+  gofr-n8n-data:
+  gofr-openwebui-data:
+  
+  # Backups
+  gofr-backups:
+
+# =============================================================================
+# CONFIGS (for shared configuration files)
+# =============================================================================
+configs:
+  backup-config:
+    file: ./backup/backup-config.yml
+
+# =============================================================================
+# SECRETS
+# =============================================================================
+secrets:
+  jwt_secret:
+    external: true
+  neo4j_password:
+    external: true
+  n8n_encryption_key:
+    external: true
+  openai_api_key:
+    external: true
+
+# =============================================================================
+# SERVICES
+# =============================================================================
+services:
+
+  # ===========================================================================
+  # INFRASTRUCTURE
+  # ===========================================================================
+
+  neo4j:
+    image: gofr-neo4j:latest
+    hostname: gofr-neo4j
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 7474
+        published: 7474
+        mode: host
+      - target: 7687
+        published: 7687
+        mode: host
+    volumes:
+      - gofr-neo4j-data:/data
+      - gofr-neo4j-logs:/logs
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-gofr-neo4j-password}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+      - NEO4J_dbms_memory_heap_initial__size=512m
+      - NEO4J_dbms_memory_heap_max__size=1G
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 10s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  chroma:
+    image: gofr-chroma:latest
+    hostname: gofr-chroma
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8000
+        published: 8000
+        mode: host
+    volumes:
+      - gofr-chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ===========================================================================
+  # GOFR SERVICES
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # GOFR-PLOT (Ports: 8050-8052)
+  # ---------------------------------------------------------------------------
+  gofr-plot:
+    image: gofr-plot-prod:latest
+    hostname: gofr-plot
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8050
+        published: 8050
+        mode: host
+      - target: 8051
+        published: 8051
+        mode: host
+      - target: 8052
+        published: 8052
+        mode: host
+    volumes:
+      - gofr-plot-data:/home/gofr-plot/data
+      - gofr-plot-logs:/home/gofr-plot/logs
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+      - MCP_PORT=8050
+      - MCPO_PORT=8051
+      - WEB_PORT=8052
+      - NEO4J_URI=bolt://gofr-neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
+      - CHROMA_HOST=gofr-chroma
+      - CHROMA_PORT=8000
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+    depends_on:
+      - neo4j
+      - chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8052/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # GOFR-DOC (Ports: 8040-8042)
+  # ---------------------------------------------------------------------------
+  gofr-doc:
+    image: gofr-doc-prod:latest
+    hostname: gofr-doc
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8040
+        published: 8040
+        mode: host
+      - target: 8041
+        published: 8041
+        mode: host
+      - target: 8042
+        published: 8042
+        mode: host
+    volumes:
+      - gofr-doc-data:/home/gofr-doc/data
+      - gofr-doc-logs:/home/gofr-doc/logs
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+      - MCP_PORT=8040
+      - MCPO_PORT=8041
+      - WEB_PORT=8042
+      - NEO4J_URI=bolt://gofr-neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - neo4j
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # GOFR-DIG (Ports: 8070-8072)
+  # ---------------------------------------------------------------------------
+  gofr-dig:
+    image: gofr-dig-prod:latest
+    hostname: gofr-dig
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8070
+        published: 8070
+        mode: host
+      - target: 8071
+        published: 8071
+        mode: host
+      - target: 8072
+        published: 8072
+        mode: host
+    volumes:
+      - gofr-dig-data:/home/gofr-dig/data
+      - gofr-dig-logs:/home/gofr-dig/logs
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+      - MCP_PORT=8070
+      - MCPO_PORT=8071
+      - WEB_PORT=8072
+      - NEO4J_URI=bolt://gofr-neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - neo4j
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8072/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # GOFR-IQ (Ports: 8080-8082)
+  # ---------------------------------------------------------------------------
+  gofr-iq:
+    image: gofr-iq-prod:latest
+    hostname: gofr-iq
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8080
+        published: 8080
+        mode: host
+      - target: 8081
+        published: 8081
+        mode: host
+      - target: 8082
+        published: 8082
+        mode: host
+    volumes:
+      - gofr-iq-data:/home/gofr-iq/data
+      - gofr-iq-logs:/home/gofr-iq/logs
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+      - MCP_PORT=8080
+      - MCPO_PORT=8081
+      - WEB_PORT=8082
+      - NEO4J_URI=bolt://gofr-neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
+      - CHROMA_HOST=gofr-chroma
+      - CHROMA_PORT=8000
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    depends_on:
+      - neo4j
+      - chroma
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # GOFR-NP (Ports: 8060-8062)
+  # ---------------------------------------------------------------------------
+  gofr-np:
+    image: gofr-np-prod:latest
+    hostname: gofr-np
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8060
+        published: 8060
+        mode: host
+      - target: 8061
+        published: 8061
+        mode: host
+      - target: 8062
+        published: 8062
+        mode: host
+    volumes:
+      - gofr-np-data:/home/gofr-np/data
+      - gofr-np-logs:/home/gofr-np/logs
+    environment:
+      - JWT_SECRET=${JWT_SECRET:-changeme}
+      - MCP_PORT=8060
+      - MCPO_PORT=8061
+      - WEB_PORT=8062
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8062/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ===========================================================================
+  # TOOLS
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # N8N - Workflow Automation (Port: 5678)
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: gofr-n8n:latest
+    hostname: gofr-n8n
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 5678
+        published: 5678
+        mode: host
+    volumes:
+      - gofr-n8n-data:/home/node/.n8n
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://gofr-n8n:5678/
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-change-this-encryption-key}
+      - N8N_USER_MANAGEMENT_DISABLED=false
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+      # MCP Endpoints for n8n workflows
+      - GOFR_PLOT_MCP=http://gofr-plot:8050
+      - GOFR_PLOT_MCPO=http://gofr-plot:8051
+      - GOFR_DOC_MCP=http://gofr-doc:8040
+      - GOFR_DOC_MCPO=http://gofr-doc:8041
+      - GOFR_DIG_MCP=http://gofr-dig:8070
+      - GOFR_DIG_MCPO=http://gofr-dig:8071
+      - GOFR_IQ_MCP=http://gofr-iq:8080
+      - GOFR_IQ_MCPO=http://gofr-iq:8081
+      - GOFR_NP_MCP=http://gofr-np:8060
+      - GOFR_NP_MCPO=http://gofr-np:8061
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Open WebUI - AI Chat Interface (Port: 3000)
+  # ---------------------------------------------------------------------------
+  openwebui:
+    image: gofr-openwebui:latest
+    hostname: gofr-openwebui
+    networks:
+      - gofr-net
+      - gofr-internal
+    ports:
+      - target: 8080
+        published: 3000
+        mode: host
+    volumes:
+      - gofr-openwebui-data:/app/backend/data
+    environment:
+      - WEBUI_SECRET_KEY=${JWT_SECRET:-changeme}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE_URL=${OPENAI_API_BASE_URL:-https://api.openai.com/v1}
+      - ENABLE_SIGNUP=true
+      - DEFAULT_USER_ROLE=user
+      # MCPO endpoints for tool integration
+      - GOFR_PLOT_URL=http://gofr-plot:8051
+      - GOFR_DOC_URL=http://gofr-doc:8041
+      - GOFR_DIG_URL=http://gofr-dig:8071
+      - GOFR_IQ_URL=http://gofr-iq:8081
+      - GOFR_NP_URL=http://gofr-np:8061
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ===========================================================================
+  # BACKUP SERVICES
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Backup Scheduler - Runs scheduled backups for all volumes
+  # ---------------------------------------------------------------------------
+  backup-scheduler:
+    image: gofr-backup:latest
+    hostname: gofr-backup
+    networks:
+      - gofr-internal
+    volumes:
+      # Source volumes (read-only)
+      - gofr-neo4j-data:/source/neo4j-data:ro
+      - gofr-chroma-data:/source/chroma-data:ro
+      - gofr-plot-data:/source/plot-data:ro
+      - gofr-plot-logs:/source/plot-logs:ro
+      - gofr-doc-data:/source/doc-data:ro
+      - gofr-doc-logs:/source/doc-logs:ro
+      - gofr-dig-data:/source/dig-data:ro
+      - gofr-dig-logs:/source/dig-logs:ro
+      - gofr-iq-data:/source/iq-data:ro
+      - gofr-iq-logs:/source/iq-logs:ro
+      - gofr-np-data:/source/np-data:ro
+      - gofr-np-logs:/source/np-logs:ro
+      - gofr-n8n-data:/source/n8n-data:ro
+      - gofr-openwebui-data:/source/openwebui-data:ro
+      # Backup destination
+      - gofr-backups:/backups
+    environment:
+      - GOFR_PROJECT=all
+      - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-7}
+      - BACKUP_COMPRESSION=gzip
+      - TZ=${TZ:-UTC}
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+      restart_policy:
+        condition: on-failure
+        delay: 60s
+        max_attempts: 3

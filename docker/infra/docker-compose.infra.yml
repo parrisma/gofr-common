@@ -1,0 +1,72 @@
+# =======================================================================
+# GOFR Infrastructure Docker Compose
+# Shared services: Neo4j, ChromaDB
+# =======================================================================
+# Usage:
+#   docker compose -f docker-compose.infra.yml up -d
+#   docker compose -f docker-compose.infra.yml down
+# =======================================================================
+
+services:
+  neo4j:
+    build:
+      context: ./neo4j
+      dockerfile: Dockerfile
+    image: gofr-neo4j:latest
+    container_name: gofr-neo4j
+    restart: unless-stopped
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    volumes:
+      - gofr-neo4j-data:/data
+      - gofr-neo4j-logs:/logs
+    environment:
+      - NEO4J_AUTH=neo4j/${NEO4J_PASSWORD:-gofr-neo4j-password}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_dbms_security_procedures_unrestricted=apoc.*
+    networks:
+      - gofr-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7474"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  chroma:
+    build:
+      context: ./chroma
+      dockerfile: Dockerfile
+    image: gofr-chroma:latest
+    container_name: gofr-chroma
+    restart: unless-stopped
+    ports:
+      - "${CHROMA_PORT:-8000}:8000"
+    volumes:
+      - gofr-chroma-data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - ANONYMIZED_TELEMETRY=FALSE
+    networks:
+      - gofr-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  gofr-net:
+    name: gofr-net
+    driver: bridge
+
+volumes:
+  gofr-neo4j-data:
+    name: gofr-neo4j-data
+  gofr-neo4j-logs:
+    name: gofr-neo4j-logs
+  gofr-chroma-data:
+    name: gofr-chroma-data

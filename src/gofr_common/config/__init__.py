@@ -30,6 +30,19 @@ from gofr_common.config.base import (
     get_default_proxy_dir,
     get_public_storage_dir,
 )
+from gofr_common.config.ports import (
+    ServicePorts,
+    PORTS,
+    get_ports,
+    register_service,
+    list_services,
+    next_available_base,
+    GOFR_DOC_PORTS,
+    GOFR_PLOT_PORTS,
+    GOFR_NP_PORTS,
+    GOFR_DIG_PORTS,
+    GOFR_IQ_PORTS,
+)
 
 __all__ = [
     # Dataclass settings
@@ -48,5 +61,17 @@ __all__ = [
     "get_default_token_store_path",
     "get_default_sessions_dir",
     "get_default_proxy_dir",
+    # Port configuration
+    "ServicePorts",
+    "PORTS",
+    "get_ports",
+    "register_service",
+    "list_services",
+    "next_available_base",
+    "GOFR_DOC_PORTS",
+    "GOFR_PLOT_PORTS",
+    "GOFR_NP_PORTS",
+    "GOFR_DIG_PORTS",
+    "GOFR_IQ_PORTS",
     "get_public_storage_dir",
 ]

@@ -200,9 +200,9 @@ echo ""
 echo "Step 3: Starting MCPO wrapper ($GOFR_MCPO_HOST:$GOFR_MCPO_PORT)..."
 echo "-----------------------------------------------------------------------"
 
-nohup uv run mcpo --port $GOFR_MCPO_PORT --host $GOFR_MCPO_HOST \
-    -- uv run python -m app.main_mcpo \
-    --host $GOFR_MCP_HOST --port $GOFR_MCP_PORT \
+nohup uv run python -m app.main_mcpo \
+    --mcp-host $GOFR_MCP_HOST --mcp-port $GOFR_MCP_PORT \
+    --mcpo-host $GOFR_MCPO_HOST --mcpo-port $GOFR_MCPO_PORT \
     $GOFR_MCPO_EXTRA_ARGS \
     > "$GOFR_LOGS_DIR/${GOFR_PROJECT_NAME}_mcpo.log" 2>&1 &
 
