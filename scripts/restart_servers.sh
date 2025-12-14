@@ -2,6 +2,10 @@
 # Shared GOFR Server Restart Script
 # Restarts all servers in correct order: MCP → MCPO → Web
 #
+# Supports two modes:
+#   --prod  : Run servers as Docker containers (works from host)
+#   --dev   : Run servers as local Python processes (requires devcontainer with uv)
+#
 # This script is called from project-specific wrappers that set environment variables.
 #
 # Required environment variables:
@@ -19,6 +23,7 @@
 #   GOFR_MCPO_HOST       - MCPO wrapper bind host (default: 0.0.0.0)
 #   GOFR_WEB_HOST        - Web server bind host (default: 0.0.0.0)
 #   GOFR_NETWORK         - Network name (for display)
+#   GOFR_DOCKER_DIR      - Docker directory containing docker-compose.yml
 #   GOFR_MCP_EXTRA_ARGS  - Extra args for MCP server
 #   GOFR_MCPO_EXTRA_ARGS - Extra args for MCPO wrapper
 #   GOFR_WEB_EXTRA_ARGS  - Extra args for Web server
@@ -54,27 +59,42 @@ done
 GOFR_MCP_HOST="${GOFR_MCP_HOST:-0.0.0.0}"
 GOFR_MCPO_HOST="${GOFR_MCPO_HOST:-0.0.0.0}"
 GOFR_WEB_HOST="${GOFR_WEB_HOST:-0.0.0.0}"
+GOFR_DOCKER_DIR="${GOFR_DOCKER_DIR:-$GOFR_PROJECT_ROOT/docker}"
 
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Parse command line arguments
 KILL_ALL=false
+RUN_MODE=""  # "prod" or "dev"
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --kill-all)
+        --kill-all|--stop)
             KILL_ALL=true
+            shift
+            ;;
+        --prod|--docker)
+            RUN_MODE="prod"
+            shift
+            ;;
+        --dev|--local)
+            RUN_MODE="dev"
             shift
             ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
-            echo "OPTIONS:"
-            echo "    --kill-all    Stop all servers without restarting"
-            echo "    --help        Show this help message"
+            echo "MODE OPTIONS (one required):"
+            echo "    --prod, --docker    Run servers as Docker containers"
+            echo "    --dev, --local      Run servers as local Python processes (needs uv)"
+            echo ""
+            echo "OTHER OPTIONS:"
+            echo "    --kill-all, --stop  Stop all servers without restarting"
+            echo "    --help              Show this help message"
             echo ""
             echo "Environment variables should be set by the project wrapper script."
             exit 0
@@ -86,9 +106,21 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Require explicit mode selection
+if [ -z "$RUN_MODE" ] && [ "$KILL_ALL" = false ]; then
+    echo -e "${RED}ERROR: Must specify --prod or --dev mode${NC}"
+    echo ""
+    echo "Usage:"
+    echo "  $0 --prod     # Run servers as Docker containers"
+    echo "  $0 --dev      # Run servers as local Python (requires devcontainer)"
+    echo "  $0 --stop     # Stop all servers"
+    exit 1
+fi
+
 echo "======================================================================="
 echo "$GOFR_PROJECT_NAME Server Restart Script"
 echo "Environment: $GOFR_ENV"
+echo "Mode: $([ "$RUN_MODE" = "prod" ] && echo "Docker containers" || echo "Local Python")"
 echo "Data Root: $GOFR_DATA_DIR"
 if [ -n "$GOFR_NETWORK" ]; then
     echo "Network: $GOFR_NETWORK"
@@ -122,6 +154,15 @@ kill_and_wait() {
     return 1
 }
 
+# Function to stop Docker containers
+stop_docker_servers() {
+    echo "  Stopping Docker containers..."
+    cd "$GOFR_DOCKER_DIR"
+    docker compose stop mcp mcpo web 2>/dev/null || true
+    echo -e "  ${GREEN}✓${NC} Docker containers stopped"
+    cd "$GOFR_PROJECT_ROOT"
+}
+
 # Function to verify server is responding
 verify_server() {
     local port=$1
@@ -132,9 +173,21 @@ verify_server() {
     
     echo "  Waiting for $name to be ready..."
     while [ $attempt -lt $max_attempts ]; do
-        if curl -s -m 2 "http://localhost:${port}${endpoint}" >/dev/null 2>&1; then
-            echo -e "  ${GREEN}✓${NC} $name ready on port $port"
-            return 0
+        # For MCP server, use proper headers for HTTP streamable transport
+        if [[ "$name" == *"MCP"* && "$endpoint" == "/mcp"* ]]; then
+            # MCP HTTP Streamable requires both Accept headers
+            if curl -s -m 2 -H "Accept: application/json, text/event-stream" \
+                   -H "Content-Type: application/json" \
+                   -d '{"jsonrpc":"2.0","method":"ping","id":1}' \
+                   "http://localhost:${port}${endpoint}" 2>&1 | grep -q "jsonrpc"; then
+                echo -e "  ${GREEN}✓${NC} $name ready on port $port"
+                return 0
+            fi
+        else
+            if curl -s -m 2 "http://localhost:${port}${endpoint}" >/dev/null 2>&1; then
+                echo -e "  ${GREEN}✓${NC} $name ready on port $port"
+                return 0
+            fi
         fi
         attempt=$((attempt + 1))
         sleep 1
@@ -144,12 +197,53 @@ verify_server() {
     return 1
 }
 
-# Kill existing processes
+# Function to wait for Docker container to be healthy
+wait_for_container() {
+    local container=$1
+    local name=$2
+    local max_wait=${3:-60}
+    local elapsed=0
+    
+    echo -ne "  Waiting for $name container..."
+    while [ $elapsed -lt $max_wait ]; do
+        local health=$(docker inspect --format='{{.State.Health.Status}}' "$container" 2>/dev/null || echo "not_found")
+        case "$health" in
+            healthy)
+                echo -e " ${GREEN}✓${NC}"
+                return 0
+                ;;
+            unhealthy)
+                echo -e " ${RED}✗ unhealthy${NC}"
+                return 1
+                ;;
+            not_found)
+                # Container may not have health check, check if running
+                local state=$(docker inspect --format='{{.State.Status}}' "$container" 2>/dev/null || echo "not_found")
+                if [ "$state" = "running" ]; then
+                    echo -e " ${GREEN}✓${NC} (running)"
+                    return 0
+                fi
+                ;;
+        esac
+        sleep 2
+        elapsed=$((elapsed + 2))
+        printf "."
+    done
+    echo -e " ${RED}✗ timeout${NC}"
+    return 1
+}
+
+# Kill existing processes (for both modes, stop local processes)
 echo ""
 echo "Step 1: Stopping existing servers..."
 echo "-----------------------------------------------------------------------"
 
-# Kill servers in reverse order (Web, MCPO, MCP)
+# Stop Docker containers if they exist
+if command -v docker &> /dev/null; then
+    stop_docker_servers
+fi
+
+# Kill local processes in reverse order (Web, MCPO, MCP)
 kill_and_wait "app.main_web" "Web server"
 kill_and_wait "mcpo --port\|mcpo" "MCPO wrapper"
 kill_and_wait "app.main_mcpo" "MCPO wrapper process"
@@ -166,6 +260,90 @@ if [ "$KILL_ALL" = true ]; then
     echo "Kill-all mode: Exiting without restart"
     echo "======================================================================="
     exit 0
+fi
+
+# =============================================================================
+# PROD MODE: Start servers as Docker containers
+# =============================================================================
+if [ "$RUN_MODE" = "prod" ]; then
+    
+    # Verify docker-compose.yml exists
+    if [ ! -f "$GOFR_DOCKER_DIR/docker-compose.yml" ]; then
+        echo -e "${RED}ERROR: docker-compose.yml not found at $GOFR_DOCKER_DIR${NC}"
+        exit 1
+    fi
+    
+    echo ""
+    echo "Step 2: Starting servers as Docker containers..."
+    echo "-----------------------------------------------------------------------"
+    
+    cd "$GOFR_DOCKER_DIR"
+    
+    # Start the server containers (infra should already be running)
+    docker compose up -d mcp mcpo web
+    
+    echo ""
+    echo "Step 3: Waiting for containers to be ready..."
+    echo "-----------------------------------------------------------------------"
+    
+    # Wait for containers to be healthy/running
+    wait_for_container "${GOFR_PROJECT_NAME}-mcp" "MCP Server" 60
+    wait_for_container "${GOFR_PROJECT_NAME}-mcpo" "MCPO Wrapper" 30
+    wait_for_container "${GOFR_PROJECT_NAME}-web" "Web Server" 30
+    
+    # Verify servers are responding
+    echo ""
+    echo "Step 4: Verifying servers are responding..."
+    echo "-----------------------------------------------------------------------"
+    
+    verify_server $GOFR_MCP_PORT "MCP Server" "/mcp" 30 || {
+        echo -e "${RED}ERROR: MCP server not responding${NC}"
+        docker compose logs mcp | tail -20
+        exit 1
+    }
+    
+    verify_server $GOFR_MCPO_PORT "MCPO Wrapper" "/openapi.json" 15 || {
+        echo -e "${RED}ERROR: MCPO wrapper not responding${NC}"
+        docker compose logs mcpo | tail -20
+        exit 1
+    }
+    
+    verify_server $GOFR_WEB_PORT "Web Server" "/ping" 15 || {
+        echo -e "${RED}ERROR: Web server not responding${NC}"
+        docker compose logs web | tail -20
+        exit 1
+    }
+    
+    cd "$GOFR_PROJECT_ROOT"
+    
+    # Summary
+    echo ""
+    echo "======================================================================="
+    echo -e "${GREEN}All servers started successfully (Docker containers)!${NC}"
+    echo "======================================================================="
+    echo ""
+    echo "Server URLs:"
+    echo "  MCP:  http://localhost:$GOFR_MCP_PORT/mcp/"
+    echo "  MCPO: http://localhost:$GOFR_MCPO_PORT/openapi.json"
+    echo "  Web:  http://localhost:$GOFR_WEB_PORT/"
+    echo ""
+    echo "View logs:"
+    echo "  docker compose -f $GOFR_DOCKER_DIR/docker-compose.yml logs -f mcp mcpo web"
+    echo ""
+    exit 0
+fi
+
+# =============================================================================
+# DEV MODE: Start servers as local Python processes
+# =============================================================================
+
+# Check for uv
+if ! command -v uv &> /dev/null; then
+    echo -e "${RED}ERROR: 'uv' not found. Dev mode requires running inside the devcontainer.${NC}"
+    echo "Either:"
+    echo "  1. Run from VS Code terminal (inside devcontainer)"
+    echo "  2. Use --prod mode to run Docker containers instead"
+    exit 1
 fi
 
 # Create logs directory if it doesn't exist
@@ -198,8 +376,8 @@ MCP_PID=$!
 echo "  MCP server starting (PID: $MCP_PID)"
 echo "  Log: $GOFR_LOGS_DIR/${GOFR_PROJECT_NAME}_mcp.log"
 
-# Verify MCP is operational
-if ! verify_server $GOFR_MCP_PORT "MCP Server" "/mcp/"; then
+# Verify MCP is operational (HTTP Streamable transport)
+if ! verify_server $GOFR_MCP_PORT "MCP Server" "/mcp"; then
     echo -e "${RED}ERROR: MCP server failed to start${NC}"
     tail -20 "$GOFR_LOGS_DIR/${GOFR_PROJECT_NAME}_mcp.log"
     exit 1
@@ -259,7 +437,7 @@ fi
 # Summary
 echo ""
 echo "======================================================================="
-echo -e "${GREEN}All servers started successfully!${NC}"
+echo -e "${GREEN}All servers started successfully (local Python)!${NC}"
 echo "======================================================================="
 echo ""
 echo "Server URLs:"

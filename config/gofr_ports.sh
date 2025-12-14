@@ -64,6 +64,7 @@ gofr_ports_list() {
     echo "gofr-dig:  MCP=${GOFR_DIG_MCP_PORT}  MCPO=${GOFR_DIG_MCPO_PORT}  Web=${GOFR_DIG_WEB_PORT}"
     echo "gofr-iq:   MCP=${GOFR_IQ_MCP_PORT}   MCPO=${GOFR_IQ_MCPO_PORT}   Web=${GOFR_IQ_WEB_PORT}"
 }
+export -f gofr_ports_list
 
 # Helper function to get ports for a specific service
 gofr_get_ports() {
