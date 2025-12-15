@@ -8,7 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from gofr_common.auth import AuthService, TokenInfo
+from gofr_common.auth import (
+    AuthService,
+    TokenInfo,
+    InvalidGroupError,
+    TokenNotFoundError,
+    TokenRevokedError,
+)
 
 
 # ============================================================================
@@ -26,13 +32,13 @@ class TestTokenInfo:
         
         info = TokenInfo(
             token="test-token",
-            group="admin",
+            groups=["admin"],
             expires_at=expires,
             issued_at=now,
         )
         
         assert info.token == "test-token"
-        assert info.group == "admin"
+        assert info.groups == ["admin"]
         assert info.expires_at == expires
         assert info.issued_at == now
 
@@ -91,21 +97,19 @@ class TestAuthServiceInit:
         
         assert auth._use_memory_store is True
         assert auth.token_store_path is None
-        assert auth.token_store == {}
+        assert auth._token_store == {}
 
-    def test_init_loads_existing_store(self, tmp_path: Path):
-        """Test that existing token store is loaded."""
-        token_store = tmp_path / "tokens.json"
-        token_store.write_text(json.dumps({
-            "existing-token": {"group": "admin", "issued_at": "2024-01-01", "expires_at": "2024-12-31"}
-        }))
-        
+    def test_init_creates_group_registry(self):
+        """Test that AuthService creates a GroupRegistry."""
         auth = AuthService(
             secret_key="test-secret",
-            token_store_path=str(token_store),
+            token_store_path=":memory:",
         )
         
-        assert "existing-token" in auth.token_store
+        # Should have group registry with reserved groups
+        assert auth.groups is not None
+        assert auth.groups.get_group_by_name("public") is not None
+        assert auth.groups.get_group_by_name("admin") is not None
 
     def test_secret_fingerprint(self):
         """Test secret fingerprint generation."""
@@ -134,12 +138,29 @@ class TestTokenCreation:
             token_store_path=":memory:",
         )
         
-        token = auth.create_token(group="admin")
+        token = auth.create_token(groups=["admin"])
         
         assert token is not None
         assert len(token) > 0
-        assert token in auth.token_store
-        assert auth.token_store[token]["group"] == "admin"
+        # Token store is now keyed by UUID, not JWT
+        assert len(auth._token_store) == 1
+        record = list(auth._token_store.values())[0]
+        assert record.groups == ["admin"]
+
+    def test_create_token_multiple_groups(self):
+        """Test token creation with multiple groups."""
+        auth = AuthService(
+            secret_key="test-secret",
+            token_store_path=":memory:",
+        )
+        
+        # Create a non-reserved group first
+        auth.groups.create_group("users", "Regular users")
+        
+        token = auth.create_token(groups=["admin", "users"])
+        
+        record = list(auth._token_store.values())[0]
+        assert set(record.groups) == {"admin", "users"}
 
     def test_create_token_with_expiry(self):
         """Test token creation with custom expiry."""
@@ -148,15 +169,15 @@ class TestTokenCreation:
             token_store_path=":memory:",
         )
         
-        token = auth.create_token(group="user", expires_in_seconds=3600)
+        token = auth.create_token(groups=["public"], expires_in_seconds=3600)
         
         # Verify token is stored
-        assert token in auth.token_store
+        assert len(auth._token_store) == 1
         
         # Verify expiry is approximately 1 hour from now
-        expires_at = datetime.fromisoformat(auth.token_store[token]["expires_at"])
+        record = list(auth._token_store.values())[0]
         now = datetime.utcnow()
-        diff = (expires_at - now).total_seconds()
+        diff = (record.expires_at - now).total_seconds()
         assert 3590 < diff < 3610  # Within 10 seconds of expected
 
     def test_create_token_with_fingerprint(self):
@@ -167,40 +188,37 @@ class TestTokenCreation:
         )
         
         token = auth.create_token(
-            group="admin",
+            groups=["admin"],
             fingerprint="device-fingerprint-hash",
         )
         
-        assert auth.token_store[token]["fingerprint"] == "device-fingerprint-hash"
+        record = list(auth._token_store.values())[0]
+        assert record.fingerprint == "device-fingerprint-hash"
 
-    def test_create_token_with_jti(self):
-        """Test token creation with token ID."""
+    def test_create_token_invalid_group(self):
+        """Test that token creation fails for non-existent groups."""
         auth = AuthService(
             secret_key="test-secret",
             token_store_path=":memory:",
         )
         
-        token = auth.create_token(
-            group="admin",
-            token_id="unique-token-id",
-        )
-        
-        assert auth.token_store[token]["jti"] == "unique-token-id"
+        with pytest.raises(InvalidGroupError, match="does not exist"):
+            auth.create_token(groups=["nonexistent"])
 
     def test_create_token_saves_to_file(self, tmp_path: Path):
         """Test that token creation saves to file."""
-        token_store = tmp_path / "tokens.json"
+        token_store = tmp_path / "auth" / "tokens.json"
         
         auth = AuthService(
             secret_key="test-secret",
             token_store_path=str(token_store),
         )
         
-        token = auth.create_token(group="admin")
+        token = auth.create_token(groups=["admin"])
         
         # Read file and verify
         stored = json.loads(token_store.read_text())
-        assert token in stored
+        assert len(stored) == 1
 
 
 # ============================================================================
@@ -218,11 +236,24 @@ class TestTokenVerification:
             token_store_path=":memory:",
         )
         
-        token = auth.create_token(group="admin")
+        token = auth.create_token(groups=["admin"])
         info = auth.verify_token(token)
         
-        assert info.group == "admin"
+        assert info.groups == ["admin"]
         assert info.token == token
+
+    def test_verify_token_multiple_groups(self):
+        """Test verifying a token with multiple groups."""
+        auth = AuthService(
+            secret_key="test-secret",
+            token_store_path=":memory:",
+        )
+        
+        auth.groups.create_group("users")
+        token = auth.create_token(groups=["admin", "users"])
+        info = auth.verify_token(token)
+        
+        assert set(info.groups) == {"admin", "users"}
 
     def test_verify_expired_token(self):
         """Test that expired tokens are rejected."""
@@ -232,7 +263,7 @@ class TestTokenVerification:
         )
         
         # Create token that expires in -1 seconds (already expired)
-        token = auth.create_token(group="admin", expires_in_seconds=-1)
+        token = auth.create_token(groups=["admin"], expires_in_seconds=-1)
         
         with pytest.raises(ValueError, match="expired"):
             auth.verify_token(token)
@@ -246,14 +277,16 @@ class TestTokenVerification:
         
         # Create a valid JWT but don't add to store
         import jwt
+        from uuid import uuid4
         payload = {
-            "group": "admin",
+            "jti": str(uuid4()),
+            "groups": ["admin"],
             "iat": int(datetime.utcnow().timestamp()),
             "exp": int((datetime.utcnow() + timedelta(hours=1)).timestamp()),
         }
         token = jwt.encode(payload, "test-secret", algorithm="HS256")
         
-        with pytest.raises(ValueError, match="not found in token store"):
+        with pytest.raises(TokenNotFoundError):
             auth.verify_token(token)
 
     def test_verify_token_wrong_secret(self):
@@ -265,8 +298,10 @@ class TestTokenVerification:
         
         # Create token with different secret
         import jwt
+        from uuid import uuid4
         payload = {
-            "group": "admin",
+            "jti": str(uuid4()),
+            "groups": ["admin"],
             "iat": int(datetime.utcnow().timestamp()),
             "exp": int((datetime.utcnow() + timedelta(hours=1)).timestamp()),
         }
@@ -283,7 +318,7 @@ class TestTokenVerification:
         )
         
         token = auth.create_token(
-            group="admin",
+            groups=["admin"],
             fingerprint="original-fingerprint",
         )
         
@@ -299,8 +334,10 @@ class TestTokenVerification:
         
         # Create a valid JWT but don't add to store
         import jwt
+        from uuid import uuid4
         payload = {
-            "group": "admin",
+            "jti": str(uuid4()),
+            "groups": ["admin"],
             "iat": int(datetime.utcnow().timestamp()),
             "exp": int((datetime.utcnow() + timedelta(hours=1)).timestamp()),
         }
@@ -308,7 +345,7 @@ class TestTokenVerification:
         
         # Should work with require_store=False
         info = auth.verify_token(token, require_store=False)
-        assert info.group == "admin"
+        assert info.groups == ["admin"]
 
 
 # ============================================================================
@@ -326,13 +363,30 @@ class TestTokenRevocation:
             token_store_path=":memory:",
         )
         
-        token = auth.create_token(group="admin")
-        assert token in auth.token_store
+        token = auth.create_token(groups=["admin"])
+        assert len(auth._token_store) == 1
         
         result = auth.revoke_token(token)
         
         assert result is True
-        assert token not in auth.token_store
+        # Token is still in store but marked as revoked
+        assert len(auth._token_store) == 1
+        record = list(auth._token_store.values())[0]
+        assert record.status == "revoked"
+        assert record.revoked_at is not None
+
+    def test_revoke_token_prevents_verification(self):
+        """Test that revoked tokens fail verification."""
+        auth = AuthService(
+            secret_key="test-secret",
+            token_store_path=":memory:",
+        )
+        
+        token = auth.create_token(groups=["admin"])
+        auth.revoke_token(token)
+        
+        with pytest.raises(TokenRevokedError):
+            auth.verify_token(token)
 
     def test_revoke_nonexistent_token(self):
         """Test revoking a token that doesn't exist."""
@@ -341,7 +395,18 @@ class TestTokenRevocation:
             token_store_path=":memory:",
         )
         
-        result = auth.revoke_token("nonexistent-token")
+        # Create a valid JWT that's not in the store
+        import jwt
+        from uuid import uuid4
+        payload = {
+            "jti": str(uuid4()),
+            "groups": ["admin"],
+            "iat": int(datetime.utcnow().timestamp()),
+            "exp": int((datetime.utcnow() + timedelta(hours=1)).timestamp()),
+        }
+        token = jwt.encode(payload, "test-secret", algorithm="HS256")
+        
+        result = auth.revoke_token(token)
         
         assert result is False
 
@@ -361,14 +426,13 @@ class TestTokenListing:
             token_store_path=":memory:",
         )
         
-        token1 = auth.create_token(group="admin")
-        token2 = auth.create_token(group="user")
+        auth.groups.create_group("users")
+        token1 = auth.create_token(groups=["admin"])
+        token2 = auth.create_token(groups=["users"])
         
         tokens = auth.list_tokens()
         
         assert len(tokens) == 2
-        assert token1 in tokens
-        assert token2 in tokens
 
     def test_list_tokens_empty(self):
         """Test listing tokens when store is empty."""
@@ -379,35 +443,237 @@ class TestTokenListing:
         
         tokens = auth.list_tokens()
         
-        assert tokens == {}
+        assert tokens == []
 
-
-# ============================================================================
-# Test get_group_for_token
-# ============================================================================
-
-
-class TestGetGroupForToken:
-    """Tests for get_group_for_token."""
-
-    def test_get_group_for_token(self):
-        """Test getting group for a valid token."""
+    def test_list_tokens_status_filter(self):
+        """Test listing tokens with status filter."""
         auth = AuthService(
             secret_key="test-secret",
             token_store_path=":memory:",
         )
         
-        token = auth.create_token(group="admin")
-        group = auth.get_group_for_token(token)
+        token1 = auth.create_token(groups=["admin"])
+        token2 = auth.create_token(groups=["admin"])
+        auth.revoke_token(token1)
         
-        assert group == "admin"
+        active_tokens = auth.list_tokens(status="active")
+        revoked_tokens = auth.list_tokens(status="revoked")
+        
+        assert len(active_tokens) == 1
+        assert len(revoked_tokens) == 1
 
-    def test_get_group_for_invalid_token(self):
-        """Test getting group for an invalid token."""
+
+# ============================================================================
+# Test resolve_token_groups
+# ============================================================================
+
+
+class TestResolveTokenGroups:
+    """Tests for resolve_token_groups."""
+
+    def test_resolve_token_groups(self):
+        """Test resolving token to Group objects."""
+        auth = AuthService(
+            secret_key="test-secret",
+            token_store_path=":memory:",
+        )
+        
+        token = auth.create_token(groups=["admin"])
+        groups = auth.resolve_token_groups(token)
+        
+        # Should include admin and public (auto-included)
+        group_names = {g.name for g in groups}
+        assert "admin" in group_names
+        assert "public" in group_names
+
+    def test_resolve_token_always_includes_public(self):
+        """Test that public group is always included."""
+        auth = AuthService(
+            secret_key="test-secret",
+            token_store_path=":memory:",
+        )
+        
+        auth.groups.create_group("users")
+        token = auth.create_token(groups=["users"])
+        groups = auth.resolve_token_groups(token)
+        
+        group_names = {g.name for g in groups}
+        assert "users" in group_names
+        assert "public" in group_names
+
+    def test_resolve_token_groups_for_invalid_token(self):
+        """Test resolving groups for an invalid token."""
         auth = AuthService(
             secret_key="test-secret",
             token_store_path=":memory:",
         )
         
         with pytest.raises(ValueError):
-            auth.get_group_for_token("invalid-token")
+            auth.resolve_token_groups("invalid-token")
+
+
+# ============================================================================
+# Test Authorization Middleware Helpers
+# ============================================================================
+
+
+class TestAuthorizationHelpers:
+    """Tests for authorization middleware helpers."""
+
+    def test_require_group_factory(self):
+        """Test that require_group creates a callable."""
+        from gofr_common.auth import require_group
+        
+        admin_check = require_group("admin")
+        assert callable(admin_check)
+
+    def test_require_any_group_factory(self):
+        """Test that require_any_group creates a callable."""
+        from gofr_common.auth import require_any_group
+        
+        check = require_any_group(["admin", "users"])
+        assert callable(check)
+
+    def test_require_all_groups_factory(self):
+        """Test that require_all_groups creates a callable."""
+        from gofr_common.auth import require_all_groups
+        
+        check = require_all_groups(["admin", "users"])
+        assert callable(check)
+
+    def test_require_admin_is_callable(self):
+        """Test that require_admin is a callable dependency."""
+        from gofr_common.auth import require_admin
+        
+        assert callable(require_admin)
+
+    def test_token_info_has_group(self):
+        """Test TokenInfo.has_group helper."""
+        from gofr_common.auth import TokenInfo
+        from datetime import datetime
+        
+        info = TokenInfo(
+            token="test",
+            groups=["admin", "users"],
+            expires_at=None,
+            issued_at=datetime.utcnow(),
+        )
+        
+        assert info.has_group("admin") is True
+        assert info.has_group("users") is True
+        assert info.has_group("other") is False
+
+    def test_token_info_has_any_group(self):
+        """Test TokenInfo.has_any_group helper."""
+        from gofr_common.auth import TokenInfo
+        from datetime import datetime
+        
+        info = TokenInfo(
+            token="test",
+            groups=["admin"],
+            expires_at=None,
+            issued_at=datetime.utcnow(),
+        )
+        
+        assert info.has_any_group(["admin", "users"]) is True
+        assert info.has_any_group(["users", "other"]) is False
+
+    def test_token_info_has_all_groups(self):
+        """Test TokenInfo.has_all_groups helper."""
+        from gofr_common.auth import TokenInfo
+        from datetime import datetime
+        
+        info = TokenInfo(
+            token="test",
+            groups=["admin", "users", "auditor"],
+            expires_at=None,
+            issued_at=datetime.utcnow(),
+        )
+        
+        assert info.has_all_groups(["admin", "users"]) is True
+        assert info.has_all_groups(["admin", "other"]) is False
+        assert info.has_all_groups([]) is True  # Empty list = all satisfied
+
+
+# ============================================================================
+# Test Module Exports
+# ============================================================================
+
+
+class TestModuleExports:
+    """Test that all expected items are exported from the module."""
+
+    def test_service_exports(self):
+        """Test AuthService and related exports."""
+        from gofr_common.auth import (
+            AuthService,
+            InvalidGroupError,
+            TokenNotFoundError,
+            TokenRevokedError,
+        )
+        
+        assert AuthService is not None
+        assert InvalidGroupError is not None
+        assert TokenNotFoundError is not None
+        assert TokenRevokedError is not None
+
+    def test_token_exports(self):
+        """Test token-related exports."""
+        from gofr_common.auth import TokenInfo, TokenRecord
+        
+        assert TokenInfo is not None
+        assert TokenRecord is not None
+
+    def test_group_exports(self):
+        """Test group-related exports."""
+        from gofr_common.auth import (
+            Group,
+            GroupRegistry,
+            GroupRegistryError,
+            ReservedGroupError,
+            DuplicateGroupError,
+            GroupNotFoundError,
+            RESERVED_GROUPS,
+        )
+        
+        assert Group is not None
+        assert GroupRegistry is not None
+        assert GroupRegistryError is not None
+        assert ReservedGroupError is not None
+        assert DuplicateGroupError is not None
+        assert GroupNotFoundError is not None
+        assert RESERVED_GROUPS == frozenset({"public", "admin"})
+
+    def test_middleware_exports(self):
+        """Test middleware-related exports."""
+        from gofr_common.auth import (
+            get_auth_service,
+            verify_token,
+            verify_token_simple,
+            optional_verify_token,
+            init_auth_service,
+            set_security_auditor,
+            get_security_auditor,
+        )
+        
+        assert callable(get_auth_service)
+        assert callable(verify_token)
+        assert callable(verify_token_simple)
+        assert callable(optional_verify_token)
+        assert callable(init_auth_service)
+        assert callable(set_security_auditor)
+        assert callable(get_security_auditor)
+
+    def test_authorization_helper_exports(self):
+        """Test authorization helper exports."""
+        from gofr_common.auth import (
+            require_group,
+            require_any_group,
+            require_all_groups,
+            require_admin,
+        )
+        
+        assert callable(require_group)
+        assert callable(require_any_group)
+        assert callable(require_all_groups)
+        assert callable(require_admin)

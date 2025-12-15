@@ -1,15 +1,18 @@
 """Authentication middleware for FastAPI.
 
-Provides utilities for validating JWT tokens in web requests.
+Provides utilities for validating JWT tokens in web requests,
+including multi-group authorization helpers.
 """
 
 import hashlib
-from typing import Any, Optional, Protocol
+from functools import wraps
+from typing import Any, Callable, List, Optional, Protocol
 
-from fastapi import HTTPException, Request, Security
+from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from .service import AuthService, TokenInfo
+from .service import AuthService
+from .tokens import TokenInfo
 
 
 class SecurityAuditorProtocol(Protocol):
@@ -224,7 +227,7 @@ def verify_token_simple(
         credentials: HTTP authorization credentials
 
     Returns:
-        TokenInfo with group and expiry information
+        TokenInfo with groups and expiry information
 
     Raises:
         HTTPException: If token is invalid or missing
@@ -237,3 +240,161 @@ def verify_token_simple(
         raise HTTPException(status_code=401, detail=str(e))
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# Authorization Helpers
+# =============================================================================
+
+
+def require_group(group_name: str) -> Callable[[TokenInfo], TokenInfo]:
+    """Create a dependency that requires a specific group.
+
+    Args:
+        group_name: Name of the required group
+
+    Returns:
+        FastAPI dependency function
+
+    Example:
+        @app.get("/admin")
+        def admin_endpoint(token: TokenInfo = Depends(require_group("admin"))):
+            return {"message": "Admin access granted"}
+    """
+    def _require_group(
+        request: Request,
+        credentials: HTTPAuthorizationCredentials = Security(security),
+    ) -> TokenInfo:
+        token_info = verify_token(request, credentials)
+        if not token_info.has_group(group_name):
+            auditor = get_security_auditor()
+            if auditor:
+                client_ip = request.client.host if request.client else "unknown"
+                auditor.log_auth_failure(
+                    client_id=client_ip,
+                    reason=f"Missing required group: {group_name}",
+                    endpoint=str(request.url.path),
+                    groups=token_info.groups,
+                )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Required group: {group_name}",
+            )
+        return token_info
+    return _require_group
+
+
+def require_any_group(group_names: List[str]) -> Callable[[TokenInfo], TokenInfo]:
+    """Create a dependency that requires any of the specified groups.
+
+    Args:
+        group_names: List of group names (any one is sufficient)
+
+    Returns:
+        FastAPI dependency function
+
+    Example:
+        @app.get("/data")
+        def data_endpoint(token: TokenInfo = Depends(require_any_group(["admin", "users"]))):
+            return {"message": "Access granted"}
+    """
+    def _require_any_group(
+        request: Request,
+        credentials: HTTPAuthorizationCredentials = Security(security),
+    ) -> TokenInfo:
+        token_info = verify_token(request, credentials)
+        if not token_info.has_any_group(group_names):
+            auditor = get_security_auditor()
+            if auditor:
+                client_ip = request.client.host if request.client else "unknown"
+                auditor.log_auth_failure(
+                    client_id=client_ip,
+                    reason=f"Missing required groups (any of): {group_names}",
+                    endpoint=str(request.url.path),
+                    groups=token_info.groups,
+                )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Required groups (any of): {group_names}",
+            )
+        return token_info
+    return _require_any_group
+
+
+def require_all_groups(group_names: List[str]) -> Callable[[TokenInfo], TokenInfo]:
+    """Create a dependency that requires all of the specified groups.
+
+    Args:
+        group_names: List of group names (all are required)
+
+    Returns:
+        FastAPI dependency function
+
+    Example:
+        @app.get("/restricted")
+        def restricted_endpoint(token: TokenInfo = Depends(require_all_groups(["admin", "auditor"]))):
+            return {"message": "Full access granted"}
+    """
+    def _require_all_groups(
+        request: Request,
+        credentials: HTTPAuthorizationCredentials = Security(security),
+    ) -> TokenInfo:
+        token_info = verify_token(request, credentials)
+        if not token_info.has_all_groups(group_names):
+            missing = set(group_names) - set(token_info.groups)
+            auditor = get_security_auditor()
+            if auditor:
+                client_ip = request.client.host if request.client else "unknown"
+                auditor.log_auth_failure(
+                    client_id=client_ip,
+                    reason=f"Missing required groups: {list(missing)}",
+                    endpoint=str(request.url.path),
+                    groups=token_info.groups,
+                )
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied. Missing groups: {list(missing)}",
+            )
+        return token_info
+    return _require_all_groups
+
+
+def require_admin(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Security(security),
+) -> TokenInfo:
+    """Dependency that requires admin group membership.
+
+    Convenience function equivalent to require_group("admin").
+
+    Args:
+        request: FastAPI request object
+        credentials: HTTP authorization credentials
+
+    Returns:
+        TokenInfo if user is admin
+
+    Raises:
+        HTTPException: 401 if not authenticated, 403 if not admin
+
+    Example:
+        @app.post("/groups")
+        def create_group(token: TokenInfo = Depends(require_admin)):
+            return {"message": "Admin action performed"}
+    """
+    token_info = verify_token(request, credentials)
+    if not token_info.has_group("admin"):
+        auditor = get_security_auditor()
+        if auditor:
+            client_ip = request.client.host if request.client else "unknown"
+            auditor.log_auth_failure(
+                client_id=client_ip,
+                reason="Admin access required",
+                endpoint=str(request.url.path),
+                groups=token_info.groups,
+            )
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied. Admin privileges required.",
+        )
+    return token_info
