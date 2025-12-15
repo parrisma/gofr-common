@@ -1,11 +1,13 @@
 # GOFR Port Standardization Summary
 
 ## Overview
+
 All GOFR services now use a consistent port allocation strategy defined in `gofr-common/config/`.
 
 ## Port Allocation Strategy
 
 **Base Port Pattern**: Each service gets 3 consecutive ports starting at a base (multiple of 10)
+
 - **MCP Port** = Base + 0
 - **MCPO Port** = Base + 1  
 - **Web Port** = Base + 2
@@ -30,6 +32,7 @@ All GOFR services now use a consistent port allocation strategy defined in `gofr
 ## Configuration Files Updated
 
 ### gofr-common (Central Configuration)
+
 1. **Python Module**: `src/gofr_common/config/ports.py`
    - Provides `ServicePorts` class
    - Exports `GOFR_*_PORTS` constants
@@ -48,27 +51,33 @@ All GOFR services now use a consistent port allocation strategy defined in `gofr
 ### Per-Project Updates
 
 #### gofr-doc
+
 - **Updated**: `scripts/gofr-doc.env` → Ports: 8040-8042
 - **Updated**: `scripts/run_tests.sh` → Sources centralized ports
 - **Updated**: `test/mcp/*.py` → Default ports: 8040, 8042
 
 #### gofr-plot  
+
 - **Updated**: `scripts/run_tests.sh` → Ports: 8050-8052
 - **Existing**: Tests already using correct ports
 
 #### gofr-np
+
 - **Updated**: `scripts/gofrnp.env` → Ports: 8060-8062 (no change)
 - **Existing**: Already using correct allocation
 
 #### gofr-dig
+
 - **Updated**: `scripts/gofr-dig.env` → Ports: 8070-8072 (was 8030-8032)
 
 #### gofr-iq
+
 - **Updated**: `scripts/gofriq.env` → Ports: 8080-8082 (was 8060-8062)
 
 ## Usage Examples
 
 ### Python (via gofr-common)
+
 ```python
 from gofr_common.config import get_ports, GOFR_DOC_PORTS
 
@@ -85,6 +94,7 @@ env_vars = GOFR_DOC_PORTS.as_env_dict('GOFR_DOC')
 ```
 
 ### Bash (via gofr_ports.sh)
+
 ```bash
 # Source the centralized configuration
 source /path/to/gofr-common/config/gofr_ports.sh
@@ -102,6 +112,7 @@ gofr_get_ports gofr-plot
 ## Adding New Services
 
 ### Option 1: Using Python API
+
 ```python
 from gofr_common.config import register_service, next_available_base
 
@@ -113,12 +124,15 @@ new_service_ports = register_service('gofr-new', base)
 ```
 
 ### Option 2: Manual Addition
+
 1. Add to `gofr-common/src/gofr_common/config/ports.py`:
+
    ```python
    'gofr-new': ServicePorts(mcp=8090, mcpo=8091, web=8092)
    ```
 
 2. Add to `gofr-common/config/gofr_ports.sh`:
+
    ```bash
    export GOFR_NEW_MCP_PORT="${GOFR_NEW_MCP_PORT:-8090}"
    export GOFR_NEW_MCPO_PORT="${GOFR_NEW_MCPO_PORT:-8091}"
@@ -130,15 +144,18 @@ new_service_ports = register_service('gofr-new', base)
 ## Migration Notes
 
 ### Services That Changed Ports
+
 - **gofr-dig**: 8030-8032 → 8070-8072
 - **gofr-iq**: 8060-8062 → 8080-8082
 - **gofr-doc**: 8000-8002 → 8040-8042
 
 ### Services That Kept Ports
+
 - **gofr-plot**: 8050-8052 (aligned with new scheme)
 - **gofr-np**: 8060-8062 (aligned with new scheme)
 
 ### Validation Steps
+
 1. **Stop all containers**: `docker stop gofr-doc-dev gofr-plot-dev gofr-np-dev gofr-dig-dev gofr-iq-dev`
 2. **Clear port bindings**: Check with `docker ps` and `netstat -tuln | grep 80[0-9][0-9]`
 3. **Restart with new ports**: Containers will bind to updated ports automatically

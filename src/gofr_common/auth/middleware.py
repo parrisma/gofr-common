@@ -14,10 +14,10 @@ from .service import AuthService, TokenInfo
 
 class SecurityAuditorProtocol(Protocol):
     """Protocol for security auditor integration.
-    
+
     Implement this protocol to receive security events from the middleware.
     """
-    
+
     def log_auth_failure(
         self,
         client_id: str,

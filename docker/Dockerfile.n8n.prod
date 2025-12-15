@@ -1,0 +1,36 @@
+# Production n8n Dockerfile
+# Uses pinned version for stability
+
+FROM docker.n8n.io/n8nio/n8n:1.70.3
+
+# Install network utilities for debugging
+USER root
+RUN apk add --no-cache \
+    iputils \
+    curl \
+    wget \
+    netcat-openbsd \
+    bind-tools \
+    net-tools
+
+# Create data directories
+RUN mkdir -p /home/node/.n8n && \
+    chown -R node:node /home/node/.n8n
+
+USER node
+
+# n8n will run on port 5678
+EXPOSE 5678
+
+# Production environment variables
+ENV N8N_LOG_LEVEL=info
+ENV N8N_DIAGNOSTICS_ENABLED=false
+ENV EXECUTIONS_DATA_PRUNE=true
+ENV EXECUTIONS_DATA_MAX_AGE=168
+ENV GENERIC_TIMEZONE=UTC
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1
+
+# Use the default entrypoint and command from the base image

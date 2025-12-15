@@ -19,11 +19,11 @@ from gofr_common.logger import Logger, create_logger
 
 class SecurityAuditorProtocol(Protocol):
     """Protocol for security auditor integration.
-    
+
     Projects can implement this protocol to receive security events
     from the auth service.
     """
-    
+
     def log_auth_failure(
         self, client_id: str, reason: str, endpoint: Optional[str] = None, **details: Any
     ) -> None:
@@ -43,7 +43,7 @@ class TokenInfo:
 
 class AuthService:
     """Service for JWT authentication and group management.
-    
+
     Features:
     - JWT token creation with configurable expiry
     - Token verification with group extraction
@@ -51,16 +51,16 @@ class AuthService:
     - File-based or in-memory token storage
     - Optional device fingerprinting for token binding
     - Enhanced JWT claims (nbf, aud, jti)
-    
+
     Example:
         # Basic usage
         auth = AuthService(secret_key="my-secret", token_store_path="/path/to/tokens.json")
         token = auth.create_token(group="admin")
         info = auth.verify_token(token)
-        
+
         # With environment variable fallback
         auth = AuthService(env_prefix="GOFR_DIG")  # Uses GOFR_DIG_JWT_SECRET
-        
+
         # In-memory mode (for testing)
         auth = AuthService(secret_key="test", token_store_path=":memory:")
     """
@@ -86,7 +86,7 @@ class AuthService:
         """
         self.env_prefix = env_prefix.upper().replace("-", "_")
         self.audience = audience or f"{self.env_prefix.lower()}-api"
-        
+
         # Setup logger - derive name from env_prefix (e.g., "GOFR_DIG" -> "gofr-dig-auth")
         if logger is not None:
             self.logger = logger

@@ -136,8 +136,8 @@ When implementing this standard, replace the placeholders with the following val
 
 ## Implementation Steps
 
-1.  Open `.vscode/launch.json` in the target project.
-2.  Backup the existing configuration if necessary.
-3.  Paste the template above.
-4.  Perform a Find & Replace for the placeholders (e.g., replace `[MCP_PORT]` with `8030` for `gofr-dig`).
-5.  Verify that `scripts/run_tests.sh` and `scripts/token_manager.sh` exist and are executable.
+1. Open `.vscode/launch.json` in the target project.
+2. Backup the existing configuration if necessary.
+3. Paste the template above.
+4. Perform a Find & Replace for the placeholders (e.g., replace `[MCP_PORT]` with `8030` for `gofr-dig`).
+5. Verify that `scripts/run_tests.sh` and `scripts/token_manager.sh` exist and are executable.

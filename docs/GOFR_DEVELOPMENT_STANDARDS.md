@@ -88,20 +88,23 @@ Development **MUST** occur within the standardized Dev Container environment.
 We enforce a consolidated standard for VS Code configuration to ensure consistent debugging, linting, and developer experience across all projects.
 
 ### `launch.json` (Debugging)
-*   **Standard**: All projects must use the standardized launch configurations for running tests, debugging MCP/Web servers (with/without auth), and utility scripts.
-*   **Reference**: See **[VSCODE_LAUNCH_STANDARDS.md](VSCODE_LAUNCH_STANDARDS.md)** for the mandatory template and port mappings.
+
+* **Standard**: All projects must use the standardized launch configurations for running tests, debugging MCP/Web servers (with/without auth), and utility scripts.
+* **Reference**: See **[VSCODE_LAUNCH_STANDARDS.md](VSCODE_LAUNCH_STANDARDS.md)** for the mandatory template and port mappings.
 
 ### `settings.json` (Workspace Settings)
-*   **Spell Checking**: `cSpell.words` must contain the shared technical vocabulary (e.g., `fastapi`, `pydantic`, `gofr`, `mcpo`) to prevent false positives.
-*   **Formatting**: Python formatting is handled by `black` and `ruff`.
+
+* **Spell Checking**: `cSpell.words` must contain the shared technical vocabulary (e.g., `fastapi`, `pydantic`, `gofr`, `mcpo`) to prevent false positives.
+* **Formatting**: Python formatting is handled by `black` and `ruff`.
 
 ### `extensions.json` (Recommended Extensions)
-*   **Standard List**: All projects share a common set of recommended extensions, including:
-    *   **Python**: `ms-python.python`, `ms-python.vscode-pylance`, `ms-python.debugpy`
-    *   **Linting/Formatting**: `ms-python.black-formatter`, `charliermarsh.ruff`
-    *   **Docs**: `njpwerner.autodocstring`, `bierner.markdown-preview-github-styles`
-    *   **GitHub**: Copilot and Pull Request extensions.
-    *   **Utils**: `streetsidesoftware.code-spell-checker`.
+
+* **Standard List**: All projects share a common set of recommended extensions, including:
+  * **Python**: `ms-python.python`, `ms-python.vscode-pylance`, `ms-python.debugpy`
+  * **Linting/Formatting**: `ms-python.black-formatter`, `charliermarsh.ruff`
+  * **Docs**: `njpwerner.autodocstring`, `bierner.markdown-preview-github-styles`
+  * **GitHub**: Copilot and Pull Request extensions.
+  * **Utils**: `streetsidesoftware.code-spell-checker`.
 
 ---
 
@@ -130,20 +133,24 @@ project-name/
 ## 6. Testing & Quality Guidelines
 
 ### Standard Tools
+
 All projects must include the following in `pyproject.toml` (`[dependency-groups.dev]`):
-*   **`pytest`**: Test runner.
-*   **`pytest-cov`**: Coverage reporting.
-*   **`bandit`**: Security linting.
+
+* **`pytest`**: Test runner.
+* **`pytest-cov`**: Coverage reporting.
+* **`bandit`**: Security linting.
 
 ### Configuration Standards (`pyproject.toml`)
-*   **Coverage**: Must be configured to output HTML (`htmlcov/`) and XML (`coverage.xml`) reports.
-*   **Bandit**: Must be configured to exclude test directories and skip `B101` (asserts).
+
+* **Coverage**: Must be configured to output HTML (`htmlcov/`) and XML (`coverage.xml`) reports.
+* **Bandit**: Must be configured to exclude test directories and skip `B101` (asserts).
 
 ### Best Practices
-1.  **Conftest**: Every project has a `tests/conftest.py` that sets up fixtures.
-2.  **Data Isolation**: Tests use a temporary directory or a dedicated `test/data` directory, configured via `GOFR_ENV=TEST`.
-3.  **Mocking**: Use `unittest.mock` or `pytest-mock` to mock external dependencies.
-4.  **Common Fixtures**: Look for fixtures provided by `gofr-common` for auth and config testing.
+
+1. **Conftest**: Every project has a `tests/conftest.py` that sets up fixtures.
+2. **Data Isolation**: Tests use a temporary directory or a dedicated `test/data` directory, configured via `GOFR_ENV=TEST`.
+3. **Mocking**: Use `unittest.mock` or `pytest-mock` to mock external dependencies.
+4. **Common Fixtures**: Look for fixtures provided by `gofr-common` for auth and config testing.
 
 ---
 

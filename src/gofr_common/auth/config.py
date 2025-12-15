@@ -51,7 +51,7 @@ def resolve_auth_config(
     """
     # Normalize prefix
     prefix = env_prefix.upper().replace("-", "_")
-    
+
     # Setup logger
     if logger is None:
         # Convert prefix to logger name format (e.g., "GOFR_DIG" -> "gofr-dig-auth-config")
@@ -166,7 +166,7 @@ def resolve_jwt_secret_for_cli(
     """
     prefix = env_prefix.upper().replace("-", "_")
     secret_env = f"{prefix}_JWT_SECRET"
-    
+
     if logger is None:
         logger_name = prefix.lower().replace("_", "-") + "-auth-config"
         logger = create_logger(name=logger_name)
@@ -174,7 +174,9 @@ def resolve_jwt_secret_for_cli(
     secret = cli_secret or os.environ.get(secret_env)
 
     if not secret:
-        error_msg = f"No JWT secret provided. Set {secret_env} environment variable or use --secret flag"
+        error_msg = (
+            f"No JWT secret provided. Set {secret_env} environment variable or use --secret flag"
+        )
         logger.error("FATAL: " + error_msg)
         if exit_on_missing:
             sys.exit(1)
@@ -192,5 +194,6 @@ def resolve_jwt_secret_for_cli(
 def _fingerprint_secret(secret: str) -> str:
     """Create a safe fingerprint of the secret for logging (first 12 chars of SHA256)."""
     import hashlib
+
     digest = hashlib.sha256(secret.encode()).hexdigest()
     return f"sha256:{digest[:12]}"
