@@ -207,10 +207,17 @@ if [ "$SKIP_LINT" = false ]; then
     echo ""
     
     # -------------------------------------------------------------------------
-    # PYRIGHT TYPE CHECKING (optional - requires Node.js)
+    # PYRIGHT TYPE CHECKING
     # -------------------------------------------------------------------------
-    # Check if node is available (pyright requires it)
-    if command -v node &> /dev/null; then
+    # Check if pyright is available (installed with: uv add "pyright[nodejs]")
+    PYRIGHT_AVAILABLE=false
+    if command -v pyright &> /dev/null; then
+        PYRIGHT_AVAILABLE=true
+    elif [ -f "${VENV_DIR}/bin/pyright" ]; then
+        PYRIGHT_AVAILABLE=true
+    fi
+    
+    if [ "$PYRIGHT_AVAILABLE" = true ]; then
         echo -e "${BLUE}Running type checks (pyright)...${NC}"
         
         PYRIGHT_CMD="pyright src/"
@@ -222,12 +229,9 @@ if [ "$SKIP_LINT" = false ]; then
             if command -v pyright &> /dev/null; then
                 ${PYRIGHT_CMD}
                 TYPE_EXIT_CODE=$?
-            elif [ -f "${VENV_DIR}/bin/pyright" ]; then
+            else
                 ${VENV_DIR}/bin/pyright src/
                 TYPE_EXIT_CODE=$?
-            else
-                echo -e "${YELLOW}Warning: pyright not found, skipping type checks${NC}"
-                TYPE_EXIT_CODE=0
             fi
         fi
         
@@ -241,8 +245,8 @@ if [ "$SKIP_LINT" = false ]; then
         echo -e "${GREEN}Type checks passed!${NC}"
         echo ""
     else
-        echo -e "${YELLOW}Skipping pyright type checks (Node.js not available)${NC}"
-        echo -e "${YELLOW}Install Node.js to enable type checking${NC}"
+        echo -e "${YELLOW}Skipping pyright type checks (pyright not installed)${NC}"
+        echo -e "${YELLOW}Install with: uv add \"pyright[nodejs]\"${NC}"
         echo ""
     fi
 fi

@@ -9,7 +9,7 @@ import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -86,7 +86,7 @@ class BackupHousekeeping:
         self.save_manifest(manifest)
         self.logger.info(f"Added backup to manifest: {backup_info.filename}")
 
-    def scan_backups(self, tier: str = None) -> List[BackupInfo]:
+    def scan_backups(self, tier: Optional[str] = None) -> List[BackupInfo]:
         """Scan backup directory and return list of backups"""
         backups = []
         manifest = self.load_manifest()
@@ -210,7 +210,7 @@ class BackupHousekeeping:
 
         return results
 
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get backup statistics"""
         backups = self.scan_backups()
 

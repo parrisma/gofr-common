@@ -98,7 +98,7 @@ def create_logger(
 
     return StructuredLogger(
         name=name,
-        level=level,
+        level=level if level is not None else logging.INFO,
         log_file=log_file,
         json_format=json_format,
     )

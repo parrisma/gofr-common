@@ -253,7 +253,7 @@ def verify_token_simple(
 # =============================================================================
 
 
-def require_group(group_name: str) -> Callable[[TokenInfo], TokenInfo]:
+def require_group(group_name: str) -> Callable[..., TokenInfo]:
     """Create a dependency that requires a specific group.
 
     Args:
@@ -290,7 +290,7 @@ def require_group(group_name: str) -> Callable[[TokenInfo], TokenInfo]:
     return _require_group
 
 
-def require_any_group(group_names: List[str]) -> Callable[[TokenInfo], TokenInfo]:
+def require_any_group(group_names: List[str]) -> Callable[..., TokenInfo]:
     """Create a dependency that requires any of the specified groups.
 
     Args:
@@ -327,7 +327,7 @@ def require_any_group(group_names: List[str]) -> Callable[[TokenInfo], TokenInfo
     return _require_any_group
 
 
-def require_all_groups(group_names: List[str]) -> Callable[[TokenInfo], TokenInfo]:
+def require_all_groups(group_names: List[str]) -> Callable[..., TokenInfo]:
     """Create a dependency that requires all of the specified groups.
 
     Args:

@@ -24,11 +24,11 @@ try:
     HVAC_AVAILABLE = True
 except ImportError:
     HVAC_AVAILABLE = False
-    hvac = None  # type: ignore
-    Forbidden = Exception  # type: ignore
-    InvalidPath = Exception  # type: ignore
-    InvalidRequest = Exception  # type: ignore
-    HvacVaultError = Exception  # type: ignore
+    hvac = None  # type: ignore[assignment]
+    Forbidden = Exception  # type: ignore[misc, assignment]
+    InvalidPath = Exception  # type: ignore[misc, assignment]
+    InvalidRequest = Exception  # type: ignore[misc, assignment]
+    HvacVaultError = Exception  # type: ignore[misc, assignment]
 
 from gofr_common.logger import Logger, create_logger
 
@@ -115,7 +115,7 @@ class VaultClient:
         config.validate()
 
         # Create hvac client
-        self._client: hvac.Client = hvac.Client(
+        self._client: hvac.Client = hvac.Client(  # type: ignore[union-attr]
             url=config.url,
             token=config.token if config.auth_method == "token" else None,
             namespace=config.namespace,
@@ -189,7 +189,7 @@ class VaultClient:
         self.logger.info("Reconnecting to Vault")
 
         # Re-create client
-        self._client = hvac.Client(
+        self._client = hvac.Client(  # type: ignore[union-attr]
             url=self.config.url,
             token=self.config.token if self.config.auth_method == "token" else None,
             namespace=self.config.namespace,

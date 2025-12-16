@@ -305,6 +305,9 @@ class AuthService:
                     raise TokenNotFoundError(f"Token {token_id} not found in token store")
 
                 token_record = self._token_store.get(token_id)
+                if token_record is None:
+                    self.logger.warning("Token not found in store", token_id=token_id)
+                    raise TokenNotFoundError(f"Token {token_id} not found in token store")
 
                 # Check if token is revoked
                 if token_record.status == "revoked":
@@ -384,6 +387,9 @@ class AuthService:
 
         if self._token_store.exists(token_id):
             token_record = self._token_store.get(token_id)
+            if token_record is None:
+                self.logger.warning("Token not found for revocation", token_id=token_id)
+                return False
 
             # Check if already revoked
             if token_record.status == "revoked":

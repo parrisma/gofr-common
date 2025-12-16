@@ -13,8 +13,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from apscheduler.schedulers.blocking import BlockingScheduler
-from apscheduler.triggers.cron import CronTrigger
+from apscheduler.schedulers.blocking import BlockingScheduler  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 
 from gofr_common.backup.config import BackupConfig
 from gofr_common.backup.housekeeping import BackupHousekeeping, BackupInfo
@@ -80,7 +80,7 @@ class BackupService:
             compression_flag = self.config.get_compression_flag()
             mode = f'w:{compression_flag}' if compression_flag else 'w'
 
-            with tarfile.open(backup_path, mode) as tar:
+            with tarfile.open(backup_path, mode) as tar:  # type: ignore[call-overload]
                 for name, path in paths_to_backup:
                     if path.exists():
                         # Add with arcname to preserve structure

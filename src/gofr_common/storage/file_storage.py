@@ -17,7 +17,7 @@ from .metadata import BlobMetadata, JsonMetadataRepository
 
 # Use standard logging if gofr_common logger not available
 try:
-    from gofr_common.logging import get_logger
+    from gofr_common.logger import get_logger
     logger = get_logger("storage.file")
 except ImportError:
     logger = logging.getLogger("storage.file")

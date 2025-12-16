@@ -10,22 +10,19 @@ requires-python = ">=3.11"
 dependencies = [
     # MCP Protocol
     "mcp>=0.9.0",
-    
     # Web Framework Stack
     "pydantic>=2.0.0",
     "uvicorn>=0.20.0",
     "fastapi>=0.100.0",
     "starlette>=0.27.0",
     "sse-starlette>=1.6.0",
-    
     # Authentication
     "PyJWT>=2.8.0",
-    
     # HTTP Client
     "httpx>=0.24.0",
-    
     # MCP OpenAPI Wrapper
     "mcpo>=0.0.19",
+    "pyright[nodejs]>=1.1.407",
 ]
 
 [project.optional-dependencies]
