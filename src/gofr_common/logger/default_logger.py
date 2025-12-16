@@ -15,10 +15,10 @@ from .interface import Logger
 
 class DefaultLogger(Logger):
     """Default logger implementation with session tracking.
-    
+
     A lightweight logger that writes formatted messages to an output stream
     (default: stderr) with optional timestamps and session tracking.
-    
+
     Example:
         logger = DefaultLogger()
         logger.info("Application started")

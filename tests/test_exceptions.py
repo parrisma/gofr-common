@@ -11,12 +11,12 @@ These tests verify:
 import pytest
 
 from gofr_common.exceptions import (
+    ConfigurationError,
     GofrError,
-    ValidationError,
+    RegistryError,
     ResourceNotFoundError,
     SecurityError,
-    ConfigurationError,
-    RegistryError,
+    ValidationError,
 )
 
 
@@ -353,8 +353,6 @@ class TestAliasCompatibility:
         """Test that aliases can be created for backward compatibility."""
         # Simulate what a project would do for backward compatibility
         GofrNpError = GofrError
-        GofrDigError = GofrError
-        GofrDocError = GofrError
 
         # Errors created with aliases work correctly
         error = GofrNpError("CODE", "message")

@@ -14,11 +14,11 @@ from .interface import Logger
 
 class ConsoleLogger(Logger):
     """Logger implementation using Python's built-in logging module.
-    
+
     Logs to console (stderr by default) with session tracking. Uses Python's
     standard logging infrastructure for compatibility with existing logging
     configurations.
-    
+
     Example:
         logger = ConsoleLogger(name="gofr-dig", level=logging.DEBUG)
         logger.info("Processing request", request_id="abc123")

@@ -2,22 +2,33 @@
 """Bootstrap script for initializing auth groups and creating initial admin token.
 
 This script sets up the authentication system by:
-1. Creating the groups.json file with reserved groups (public, admin)
-2. Creating the tokens.json file with an initial admin token
+1. Creating reserved groups (public, admin) in the configured backend
+2. Creating an initial admin token
 3. Outputting the admin token for initial system access
 
+Supports multiple backends:
+- memory: In-memory storage (testing only, not persisted)
+- file: JSON file storage (default, single-instance deployments)
+- vault: HashiCorp Vault KV v2 (production, multi-instance deployments)
+
 Usage:
+    # File backend (default)
     python scripts/init_auth.py --data-dir /path/to/data/auth
 
-    # Or with environment variable
-    export GOFR_AUTH_DATA_DIR=/path/to/data/auth
+    # Vault backend
+    python scripts/init_auth.py --backend vault --vault-url http://vault:8200 --vault-token token
+
+    # Or with environment variables
+    export GOFR_AUTH_BACKEND=vault
+    export GOFR_VAULT_URL=http://vault:8200
+    export GOFR_VAULT_TOKEN=your-token
     python scripts/init_auth.py
 
     # Output token to file instead of stdout
-    python scripts/init_auth.py --data-dir /path/to/data/auth --output /path/to/admin-token.txt
+    python scripts/init_auth.py --output /path/to/admin-token.txt
 
-    # Force recreate even if files exist
-    python scripts/init_auth.py --data-dir /path/to/data/auth --force
+    # Force recreate even if already initialized
+    python scripts/init_auth.py --force
 """
 
 import argparse
@@ -30,7 +41,7 @@ script_dir = Path(__file__).parent
 project_root = script_dir.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from gofr_common.auth.groups import GroupRegistry, RESERVED_GROUPS
+from gofr_common.auth.groups import RESERVED_GROUPS
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,12 +51,57 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
+    
+    # Backend selection
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["memory", "file", "vault"],
+        default=os.environ.get("GOFR_AUTH_BACKEND", "file"),
+        help="Storage backend (default: file or GOFR_AUTH_BACKEND env)",
+    )
+    
+    # File backend options
     parser.add_argument(
         "--data-dir",
         type=str,
         default=os.environ.get("GOFR_AUTH_DATA_DIR", "data/auth"),
-        help="Directory for auth data files (default: data/auth or GOFR_AUTH_DATA_DIR env)",
+        help="Directory for auth data files - file backend only (default: data/auth)",
     )
+    
+    # Vault backend options
+    parser.add_argument(
+        "--vault-url",
+        type=str,
+        default=os.environ.get("GOFR_VAULT_URL", "http://localhost:8200"),
+        help="Vault server URL (default: http://localhost:8200 or GOFR_VAULT_URL env)",
+    )
+    parser.add_argument(
+        "--vault-token",
+        type=str,
+        default=os.environ.get("GOFR_VAULT_TOKEN"),
+        help="Vault token for authentication (default: GOFR_VAULT_TOKEN env)",
+    )
+    parser.add_argument(
+        "--vault-role-id",
+        type=str,
+        default=os.environ.get("GOFR_VAULT_ROLE_ID"),
+        help="Vault AppRole role ID (default: GOFR_VAULT_ROLE_ID env)",
+    )
+    parser.add_argument(
+        "--vault-secret-id",
+        type=str,
+        default=os.environ.get("GOFR_VAULT_SECRET_ID"),
+        help="Vault AppRole secret ID (default: GOFR_VAULT_SECRET_ID env)",
+    )
+    parser.add_argument(
+        "--vault-path-prefix",
+        type=str,
+        default=os.environ.get("GOFR_VAULT_PATH_PREFIX", "gofr/auth"),
+        help="Path prefix in Vault (default: gofr/auth)",
+    )
+    
+    # Common options
     parser.add_argument(
         "--output",
         type=str,
@@ -54,7 +110,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--force",
         action="store_true",
-        help="Force recreation even if files already exist",
+        help="Force recreation even if already initialized",
     )
     parser.add_argument(
         "--secret",
@@ -76,37 +132,111 @@ def log(message: str, quiet: bool = False) -> None:
         print(message, file=sys.stderr)
 
 
+def create_stores(args: argparse.Namespace):
+    """Create token and group stores based on backend selection."""
+    from gofr_common.auth import (
+        MemoryTokenStore,
+        MemoryGroupStore,
+        FileTokenStore,
+        FileGroupStore,
+        VaultConfig,
+        VaultClient,
+        VaultTokenStore,
+        VaultGroupStore,
+    )
+    
+    if args.backend == "memory":
+        return MemoryTokenStore(), MemoryGroupStore()
+    
+    elif args.backend == "file":
+        data_dir = Path(args.data_dir)
+        data_dir.mkdir(parents=True, exist_ok=True)
+        tokens_path = data_dir / "tokens.json"
+        groups_path = data_dir / "groups.json"
+        return FileTokenStore(path=str(tokens_path)), FileGroupStore(path=str(groups_path))
+    
+    elif args.backend == "vault":
+        if not args.vault_token and not (args.vault_role_id and args.vault_secret_id):
+            raise ValueError(
+                "Vault backend requires --vault-token or both --vault-role-id and --vault-secret-id"
+            )
+        
+        config = VaultConfig(
+            url=args.vault_url,
+            token=args.vault_token,
+            role_id=args.vault_role_id,
+            secret_id=args.vault_secret_id,
+        )
+        client = VaultClient(config)
+        
+        if not client.health_check():
+            raise RuntimeError(f"Cannot connect to Vault at {args.vault_url}")
+        
+        return (
+            VaultTokenStore(client, path_prefix=args.vault_path_prefix),
+            VaultGroupStore(client, path_prefix=args.vault_path_prefix),
+        )
+    
+    else:
+        raise ValueError(f"Unknown backend: {args.backend}")
+
+
+def check_existing(args: argparse.Namespace) -> bool:
+    """Check if auth is already initialized. Returns True if exists."""
+    if args.backend == "file":
+        data_dir = Path(args.data_dir)
+        groups_path = data_dir / "groups.json"
+        tokens_path = data_dir / "tokens.json"
+        return groups_path.exists() and tokens_path.exists()
+    
+    elif args.backend == "vault":
+        # For Vault, check if reserved groups exist
+        try:
+            token_store, group_store = create_stores(args)
+            # Check if admin group exists
+            admin = group_store.get_by_name("admin")
+            return admin is not None
+        except Exception:
+            return False
+    
+    return False
+
+
 def main() -> int:
     """Main entry point."""
     args = parse_args()
 
-    data_dir = Path(args.data_dir)
-    groups_path = data_dir / "groups.json"
-    tokens_path = data_dir / "tokens.json"
-
     # Check if already initialized
-    if groups_path.exists() and tokens_path.exists() and not args.force:
-        log(f"Auth files already exist in: {data_dir}", args.quiet)
+    if check_existing(args) and not args.force:
+        log(f"Auth system already initialized (backend: {args.backend})", args.quiet)
         log("Use --force to reinitialize", args.quiet)
-
-        # Still useful to show existing state
-        registry = GroupRegistry(store_path=str(groups_path), auto_bootstrap=False)
-        groups = registry.list_groups(include_defunct=True)
-        log(f"Existing groups: {[g.name for g in groups]}", args.quiet)
         return 0
 
-    # Create data directory
-    data_dir.mkdir(parents=True, exist_ok=True)
+    # Create stores
+    log(f"Initializing auth system (backend: {args.backend})", args.quiet)
+    
+    try:
+        token_store, group_store = create_stores(args)
+    except Exception as e:
+        log(f"ERROR: Failed to create stores: {e}", args.quiet)
+        return 1
+    
+    if args.backend == "file":
+        log(f"  Data directory: {args.data_dir}", args.quiet)
+    elif args.backend == "vault":
+        log(f"  Vault URL: {args.vault_url}", args.quiet)
+        log(f"  Path prefix: {args.vault_path_prefix}", args.quiet)
 
-    # Initialize AuthService (this creates reserved groups and token store)
-    log(f"Initializing auth system at: {data_dir}", args.quiet)
+    # Initialize AuthService
+    log("", args.quiet)
     
-    from gofr_common.auth import AuthService
+    from gofr_common.auth import AuthService, GroupRegistry
     
+    groups = GroupRegistry(store=group_store)
     auth = AuthService(
         secret_key=args.secret,
-        token_store_path=str(tokens_path),
-        group_store_path=str(groups_path),
+        token_store=token_store,
+        group_registry=groups,
     )
 
     # Verify reserved groups

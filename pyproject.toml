@@ -51,9 +51,14 @@ plotting = [
     "matplotlib>=3.5.0",
 ]
 
+# Optional: HashiCorp Vault backend for centralized token/group storage
+vault = [
+    "hvac>=2.1.0",
+]
+
 # All optional dependencies
 all = [
-    "gofr-common[dev,pdf,plotting]",
+    "gofr-common[dev,pdf,plotting,vault]",
 ]
 
 [build-system]
@@ -94,6 +99,9 @@ testpaths = ["tests"]
 filterwarnings = [
     "ignore::RuntimeWarning:matplotlib",
     "ignore::DeprecationWarning",
+]
+markers = [
+    "vault_integration: marks tests requiring a running Vault container (deselect with '-m \"not vault_integration\"')",
 ]
 
 [dependency-groups]

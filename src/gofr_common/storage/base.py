@@ -4,7 +4,7 @@ Defines the abstract interface that all storage implementations must follow.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, List, Any
+from typing import List, Optional, Tuple
 
 
 class StorageBase(ABC):

@@ -17,7 +17,7 @@ from .interface import Logger
 
 class JsonFormatter(logging.Formatter):
     """JSON formatter for logging records.
-    
+
     Formats log records as JSON objects suitable for ingestion by
     log aggregation systems like ELK, Splunk, or CloudWatch.
     """
@@ -53,7 +53,7 @@ class JsonFormatter(logging.Formatter):
 
 class TextFormatter(logging.Formatter):
     """Text formatter that appends extra kwargs to the message.
-    
+
     Formats log records as human-readable text with any extra
     key-value pairs appended to the message.
     """
@@ -84,24 +84,24 @@ class TextFormatter(logging.Formatter):
 
 class StructuredLogger(Logger):
     """Logger implementation with structured JSON logging and file output.
-    
+
     A production-ready logger that supports:
     - JSON formatting for log aggregation systems
     - Human-readable text formatting for development
     - File output with automatic rotation
     - Session tracking across all log entries
-    
+
     Example:
         # Development mode (text output)
         logger = StructuredLogger(name="gofr-plot")
-        
+
         # Production mode (JSON output to file)
         logger = StructuredLogger(
             name="gofr-plot",
             json_format=True,
             log_file="/var/log/gofr-plot.log"
         )
-        
+
         logger.info("Request processed", request_id="abc123", duration_ms=45)
     """
 
@@ -113,7 +113,7 @@ class StructuredLogger(Logger):
         json_format: bool = False,
     ):
         """Initialize the structured logger.
-        
+
         Args:
             name: Logger name (e.g., "gofr-np", "gofr-dig", "gofr-plot", "gofr-doc")
             level: Logging level (logging.DEBUG, logging.INFO, etc.)

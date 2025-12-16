@@ -3,15 +3,10 @@
 This module tests the CodeQualityChecker class and pytest fixtures.
 """
 
-import ast
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from gofr_common.testing import CheckResult, CodeQualityChecker
-
 
 # ============================================================================
 # Test CheckResult dataclass

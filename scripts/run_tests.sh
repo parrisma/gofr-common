@@ -95,6 +95,7 @@ COVERAGE=false
 COVERAGE_HTML=false
 RUN_UNIT=false
 CLEANUP_ONLY=false
+SKIP_LINT=false
 PYTEST_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -120,6 +121,10 @@ while [[ $# -gt 0 ]]; do
             CLEANUP_ONLY=true
             shift
             ;;
+        --skip-lint|--no-lint)
+            SKIP_LINT=true
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS] [PYTEST_ARGS...]"
             echo ""
@@ -128,6 +133,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --coverage       Run with coverage report"
             echo "  --coverage-html  Run with HTML coverage report"
             echo "  --unit           Run unit tests only"
+            echo "  --skip-lint      Skip code quality checks (ruff)"
             echo "  --cleanup-only   Clean environment and exit"
             echo "  --help, -h       Show this help message"
             echo ""
@@ -138,6 +144,7 @@ while [[ $# -gt 0 ]]; do
             echo "  $0 -v                          # Run with verbose output"
             echo "  $0 --coverage                  # Run with coverage"
             echo "  $0 --docker                    # Run in Docker"
+            echo "  $0 --skip-lint                 # Skip linting, run tests only"
             exit 0
             ;;
         *)
@@ -158,6 +165,51 @@ if [ "$CLEANUP_ONLY" = true ]; then
     cleanup_environment
     exit 0
 fi
+
+# =============================================================================
+# CODE QUALITY CHECKS (RUFF)
+# =============================================================================
+
+if [ "$SKIP_LINT" = false ]; then
+    echo -e "${BLUE}Running code quality checks (ruff)...${NC}"
+    
+    RUFF_CMD="ruff check src/ tests/"
+    
+    if [ "$USE_DOCKER" = true ]; then
+        if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+            echo -e "${RED}Container ${CONTAINER_NAME} is not running for lint check.${NC}"
+            exit 1
+        fi
+        docker exec "${CONTAINER_NAME}" bash -c "cd /home/${PROJECT_NAME} && source .venv/bin/activate && ${RUFF_CMD}"
+        LINT_EXIT_CODE=$?
+    else
+        if command -v ruff &> /dev/null; then
+            ${RUFF_CMD}
+            LINT_EXIT_CODE=$?
+        elif command -v uv &> /dev/null; then
+            uv run ${RUFF_CMD}
+            LINT_EXIT_CODE=$?
+        else
+            echo -e "${YELLOW}Warning: ruff not found, skipping lint checks${NC}"
+            LINT_EXIT_CODE=0
+        fi
+    fi
+    
+    if [ $LINT_EXIT_CODE -ne 0 ]; then
+        echo ""
+        echo -e "${RED}=== Code quality checks failed! ===${NC}"
+        echo -e "${YELLOW}Fix issues with: ruff check src/ tests/ --fix${NC}"
+        echo -e "${YELLOW}Or skip lint with: $0 --skip-lint${NC}"
+        exit $LINT_EXIT_CODE
+    fi
+    
+    echo -e "${GREEN}Code quality checks passed!${NC}"
+    echo ""
+fi
+
+# =============================================================================
+# PYTEST EXECUTION
+# =============================================================================
 
 # Build pytest command
 PYTEST_CMD="pytest"

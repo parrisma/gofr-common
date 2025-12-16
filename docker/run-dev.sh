@@ -30,10 +30,11 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     docker rm "$CONTAINER_NAME" 2>/dev/null || true
 fi
 
-# Run container (no network or ports needed - just for testing)
+# Run container (with Docker socket for sibling containers)
 docker run -d \
     --name "$CONTAINER_NAME" \
     -v "$PROJECT_ROOT:/home/gofr/devroot/gofr-common:rw" \
+    -v /var/run/docker.sock:/var/run/docker.sock:rw \
     -e GOFRCOMMON_ENV=development \
     -e GOFRCOMMON_DEBUG=true \
     -e GOFRCOMMON_LOG_LEVEL=DEBUG \

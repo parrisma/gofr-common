@@ -18,30 +18,30 @@ def create_starlette_app(
     debug: bool = False,
 ) -> Any:
     """Create a Starlette application with common GOFR configuration.
-    
+
     Args:
         routes: List of Route objects
         lifespan: Lifespan context manager for startup/shutdown
         cors_config: CORS configuration (default: permissive)
         include_auth_middleware: Whether to add AuthHeaderMiddleware
         debug: Enable debug mode
-    
+
     Returns:
         Starlette application with middleware applied
-    
+
     Example:
         from starlette.routing import Route, Mount
         from gofr_common.web import create_starlette_app, CORSConfig
-        
+
         async def lifespan(app):
             # Startup
             yield
             # Shutdown
-        
+
         routes = [
             Mount("/mcp/", app=mcp_handler),
         ]
-        
+
         app = create_starlette_app(
             routes=routes,
             lifespan=lifespan,
@@ -50,24 +50,24 @@ def create_starlette_app(
         )
     """
     from starlette.applications import Starlette
-    
+
     # Create base app
     app = Starlette(
         debug=debug,
         routes=routes or [],
         lifespan=lifespan,
     )
-    
+
     # Add auth header middleware if requested (before CORS)
     if include_auth_middleware:
         app.add_middleware(AuthHeaderMiddleware)
-    
+
     # Apply CORS middleware
     if cors_config is None:
         cors_config = CORSConfig.permissive()
-    
+
     app = create_cors_middleware(app, cors_config)
-    
+
     return app
 
 
@@ -81,12 +81,12 @@ def create_mcp_starlette_app(
     debug: bool = False,
 ) -> Any:
     """Create a Starlette application configured for MCP Streamable HTTP.
-    
+
     This is a specialized factory for MCP servers with common patterns:
     - Mounts MCP handler at /mcp/
     - Configures CORS with Mcp-Session-Id exposed
     - Optional auth header middleware
-    
+
     Args:
         mcp_handler: The MCP Streamable HTTP handler
         lifespan: Lifespan context manager
@@ -95,34 +95,34 @@ def create_mcp_starlette_app(
         mcp_path: Path to mount MCP handler (default: "/mcp/")
         additional_routes: Extra routes to include
         debug: Enable debug mode
-    
+
     Returns:
         Starlette application ready for MCP transport
-    
+
     Example:
         from gofr_common.web import create_mcp_starlette_app
-        
+
         app = create_mcp_starlette_app(
             mcp_handler=handle_streamable_http,
             lifespan=lifespan,
             env_prefix="GOFR_PLOT",
             include_auth_middleware=True,
         )
-        
+
         # Run with uvicorn
         uvicorn.run(app, host="0.0.0.0", port=8001)
     """
     from starlette.routing import Mount
-    
+
     # Build routes
     routes = [Mount(mcp_path, app=mcp_handler)]
-    
+
     if additional_routes:
         routes.extend(additional_routes)
-    
+
     # Configure CORS for MCP
     cors_config = CORSConfig.for_mcp(env_prefix)
-    
+
     return create_starlette_app(
         routes=routes,
         lifespan=lifespan,

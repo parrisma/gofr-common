@@ -11,10 +11,10 @@ from typing import Any
 
 class Logger(ABC):
     """Abstract base class for logging interface.
-    
+
     All GOFR projects use this interface to ensure consistent logging
     behavior across the entire ecosystem.
-    
+
     Example:
         class MyLogger(Logger):
             def info(self, message: str, **kwargs: Any) -> None:
@@ -25,7 +25,7 @@ class Logger(ABC):
     @abstractmethod
     def debug(self, message: str, **kwargs: Any) -> None:
         """Log a debug message.
-        
+
         Args:
             message: The message to log
             **kwargs: Additional key-value pairs to include in the log
@@ -35,7 +35,7 @@ class Logger(ABC):
     @abstractmethod
     def info(self, message: str, **kwargs: Any) -> None:
         """Log an info message.
-        
+
         Args:
             message: The message to log
             **kwargs: Additional key-value pairs to include in the log
@@ -45,7 +45,7 @@ class Logger(ABC):
     @abstractmethod
     def warning(self, message: str, **kwargs: Any) -> None:
         """Log a warning message.
-        
+
         Args:
             message: The message to log
             **kwargs: Additional key-value pairs to include in the log
@@ -55,7 +55,7 @@ class Logger(ABC):
     @abstractmethod
     def error(self, message: str, **kwargs: Any) -> None:
         """Log an error message.
-        
+
         Args:
             message: The message to log
             **kwargs: Additional key-value pairs to include in the log
@@ -65,7 +65,7 @@ class Logger(ABC):
     @abstractmethod
     def critical(self, message: str, **kwargs: Any) -> None:
         """Log a critical message.
-        
+
         Args:
             message: The message to log
             **kwargs: Additional key-value pairs to include in the log
@@ -75,7 +75,7 @@ class Logger(ABC):
     @abstractmethod
     def get_session_id(self) -> str:
         """Get the current session ID.
-        
+
         Returns:
             The unique session identifier for this logger instance.
         """

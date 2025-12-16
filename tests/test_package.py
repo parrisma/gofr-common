@@ -1,6 +1,5 @@
 """Basic tests for gofr_common package."""
 
-import pytest
 
 
 def test_import_gofr_common():

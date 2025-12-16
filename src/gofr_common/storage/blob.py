@@ -3,10 +3,10 @@
 Handles raw binary data storage separately from metadata.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional, List
-import logging
+from typing import List, Optional
 
 # Use standard logging if gofr_common logger not available
 try:
@@ -61,7 +61,7 @@ class FileBlobRepository(BlobRepository):
             storage_dir: Directory to store blob files
         """
         self.storage_dir = storage_dir
-        
+
         # Create storage directory if it doesn't exist
         try:
             self.storage_dir.mkdir(parents=True, exist_ok=True)
@@ -105,7 +105,7 @@ class FileBlobRepository(BlobRepository):
     def delete(self, guid: str, format: Optional[str] = None) -> bool:
         """Delete blob file(s)"""
         deleted = False
-        
+
         if format:
             # Delete specific format
             filepath = self._get_filepath(guid, format)
@@ -125,14 +125,14 @@ class FileBlobRepository(BlobRepository):
                     logger.debug(f"Blob deleted: {filepath.name}")
                 except Exception as e:
                     logger.error(f"Failed to delete blob file {filepath.name}: {e}")
-                    
+
         return deleted
 
     def exists(self, guid: str, format: Optional[str] = None) -> bool:
         """Check if blob exists"""
         if format:
             return self._get_filepath(guid, format).exists()
-        
+
         # Check for any file starting with guid
         return any(self.storage_dir.glob(f"{guid}.*"))
 

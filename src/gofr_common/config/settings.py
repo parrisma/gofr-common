@@ -14,7 +14,7 @@ Design principles:
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Optional
 
 
 @dataclass

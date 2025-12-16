@@ -3,19 +3,20 @@
 Handles JWT token creation, validation, and group mapping.
 Parameterized to work with any GOFR project via env_prefix.
 Now supports multi-group tokens with a central group registry.
+Supports pluggable storage backends via TokenStore protocol.
 """
 
 import hashlib
-import json
 import os
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Protocol
 
 import jwt
 
 from gofr_common.logger import Logger, create_logger
-from .groups import Group, GroupRegistry, RESERVED_GROUPS
+
+from .backends import TokenStore
+from .groups import Group, GroupRegistry
 from .tokens import TokenInfo, TokenRecord
 
 
@@ -35,16 +36,19 @@ class SecurityAuditorProtocol(Protocol):
 
 class InvalidGroupError(Exception):
     """Raised when token references an invalid or defunct group."""
+
     pass
 
 
 class TokenNotFoundError(Exception):
     """Raised when a token is not found in the store."""
+
     pass
 
 
 class TokenRevokedError(Exception):
     """Raised when a token has been revoked."""
+
     pass
 
 
@@ -57,33 +61,41 @@ class AuthService:
     - Token verification with group extraction
     - Soft-delete token revocation (tokens never deleted)
     - Central group registry with reserved groups
-    - File-based or in-memory token storage
+    - Pluggable storage backends (memory, file, vault)
     - Optional device fingerprinting for token binding
     - Enhanced JWT claims (nbf, aud, jti)
 
     Example:
-        # Basic usage
+        from gofr_common.auth.backends import MemoryTokenStore, MemoryGroupStore
+
+        # Create stores
+        token_store = MemoryTokenStore()
+        group_store = MemoryGroupStore()
+        group_registry = GroupRegistry(store=group_store)
+
+        # Create service
         auth = AuthService(
             secret_key="my-secret",
-            token_store_path="/path/to/tokens.json",
-            group_store_path="/path/to/groups.json"
+            token_store=token_store,
+            group_registry=group_registry,
         )
         token = auth.create_token(groups=["admin", "users"])
         info = auth.verify_token(token)
         print(info.groups)  # ["admin", "users"]
 
-        # With environment variable fallback
-        auth = AuthService(env_prefix="GOFR_DIG")  # Uses GOFR_DIG_JWT_SECRET
-
-        # In-memory mode (for testing)
-        auth = AuthService(secret_key="test", token_store_path=":memory:")
+        # With environment variable fallback for secret
+        auth = AuthService(
+            token_store=token_store,
+            group_registry=group_registry,
+            env_prefix="GOFR_DIG",  # Uses GOFR_DIG_JWT_SECRET
+        )
     """
 
     def __init__(
         self,
+        token_store: TokenStore,
+        group_registry: GroupRegistry,
         secret_key: Optional[str] = None,
-        token_store_path: Optional[str] = None,
-        group_store_path: Optional[str] = None,
         env_prefix: str = "GOFR",
         logger: Optional[Logger] = None,
         audience: Optional[str] = None,
@@ -91,13 +103,9 @@ class AuthService:
         """Initialize the authentication service.
 
         Args:
+            token_store: TokenStore instance for token storage (memory, file, vault)
+            group_registry: GroupRegistry instance for group management
             secret_key: Secret key for JWT signing. Falls back to {env_prefix}_JWT_SECRET
-            token_store_path: Path to store token records.
-                             If None, uses {env_prefix}_TOKEN_STORE or default.
-                             If ":memory:", uses in-memory storage without file persistence.
-            group_store_path: Path to store group registry.
-                             If None, derives from token_store_path parent directory.
-                             If token_store_path is ":memory:", also uses in-memory.
             env_prefix: Prefix for environment variables (e.g., "GOFR_DIG")
             logger: Optional logger instance. Creates one if not provided.
             audience: Optional JWT audience claim for token validation.
@@ -124,59 +132,21 @@ class AuthService:
             secret = os.urandom(32).hex()
         self.secret_key: str = secret
 
-        # Setup token store
-        if token_store_path is None:
-            token_store_env = f"{self.env_prefix}_TOKEN_STORE"
-            token_store_path = os.environ.get(token_store_env)
+        # Store references
+        self._token_store = token_store
+        self._group_registry = group_registry
 
-        # Check for in-memory mode
-        self._use_memory_store = token_store_path == ":memory:"
-
-        if self._use_memory_store:
-            self.token_store_path: Optional[Path] = None
-            self._token_store: Dict[str, TokenRecord] = {}
-            
-            # Use in-memory group registry too
-            self._group_registry = GroupRegistry(
-                store_path=":memory:",
-                logger=self.logger,
-                auto_bootstrap=True,
-            )
-            
-            self.logger.info(
-                "AuthService initialized with in-memory stores",
-                secret_fingerprint=self._secret_fingerprint(),
-            )
-        else:
-            if token_store_path:
-                self.token_store_path = Path(token_store_path)
-            else:
-                # Default path - caller should typically provide this
-                self.token_store_path = Path("data/auth/tokens.json")
-            
-            # Derive group store path from token store path if not provided
-            if group_store_path is None:
-                group_store_path = str(self.token_store_path.parent / "groups.json")
-            
-            # Initialize group registry
-            self._group_registry = GroupRegistry(
-                store_path=group_store_path,
-                logger=self.logger,
-                auto_bootstrap=True,
-            )
-            
-            self._load_token_store()
-            self.logger.info(
-                "AuthService initialized",
-                token_store=str(self.token_store_path),
-                group_store=group_store_path,
-                secret_fingerprint=self._secret_fingerprint(),
-            )
+        self.logger.info(
+            "AuthService initialized",
+            token_store_type=type(token_store).__name__,
+            group_store_type=type(group_registry._store).__name__,
+            secret_fingerprint=self._secret_fingerprint(),
+        )
 
     @property
     def groups(self) -> GroupRegistry:
         """Access the group registry.
-        
+
         Returns:
             The GroupRegistry instance for this AuthService
         """
@@ -191,61 +161,9 @@ class AuthService:
         """Public accessor for the JWT secret fingerprint."""
         return self._secret_fingerprint()
 
-    def _load_token_store(self) -> None:
-        """Load token records from disk (no-op for in-memory mode)."""
-        if self._use_memory_store:
-            self.logger.debug("In-memory mode: skipping token store load")
-            return
-
-        assert self.token_store_path is not None
-
-        if self.token_store_path.exists():
-            try:
-                with open(self.token_store_path, "r") as f:
-                    data = json.load(f)
-                    # Convert dict data to TokenRecord objects
-                    self._token_store = {
-                        uuid_str: TokenRecord.from_dict(record_data)
-                        for uuid_str, record_data in data.items()
-                    }
-                self.logger.debug(
-                    "Token store loaded from disk",
-                    tokens_count=len(self._token_store),
-                    path=str(self.token_store_path),
-                )
-            except Exception as e:
-                self.logger.error("Failed to load token store", error=str(e))
-                self._token_store = {}
-        else:
-            self._token_store = {}
-            self.logger.debug("Token store initialized as empty", path=str(self.token_store_path))
-
-    def _save_token_store(self) -> None:
-        """Save token records to disk (no-op for in-memory mode)."""
-        if self._use_memory_store:
-            self.logger.debug(
-                "In-memory mode: skipping token store save",
-                tokens_count=len(self._token_store),
-            )
-            return
-
-        assert self.token_store_path is not None
-
-        try:
-            self.token_store_path.parent.mkdir(parents=True, exist_ok=True)
-            # Convert TokenRecord objects to dicts for JSON serialization
-            data = {
-                uuid_str: record.to_dict()
-                for uuid_str, record in self._token_store.items()
-            }
-            with open(self.token_store_path, "w") as f:
-                json.dump(data, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            self.logger.debug("Token store saved", tokens_count=len(self._token_store))
-        except Exception as e:
-            self.logger.error("Failed to save token store", error=str(e))
-            raise
+    def _reload_store(self) -> None:
+        """Reload token store from backend (for file/vault backends)."""
+        self._token_store.reload()
 
     def create_token(
         self,
@@ -302,8 +220,7 @@ class AuthService:
         jwt_token = jwt.encode(payload, self.secret_key, algorithm="HS256")
 
         # Store token record keyed by UUID
-        self._token_store[str(token_record.id)] = token_record
-        self._save_token_store()
+        self._token_store.put(str(token_record.id), token_record)
 
         self.logger.info(
             "Token created",
@@ -337,7 +254,7 @@ class AuthService:
         """
         try:
             # Reload token store to get latest tokens
-            self._load_token_store()
+            self._reload_store()
 
             # Decode and verify token with enhanced options
             payload = jwt.decode(
@@ -383,17 +300,17 @@ class AuthService:
 
             # Check if token is in our store (if required)
             if require_store:
-                if token_id not in self._token_store:
+                if not self._token_store.exists(token_id):
                     self.logger.warning("Token not found in store", token_id=token_id)
                     raise TokenNotFoundError(f"Token {token_id} not found in token store")
-                
-                token_record = self._token_store[token_id]
-                
+
+                token_record = self._token_store.get(token_id)
+
                 # Check if token is revoked
                 if token_record.status == "revoked":
                     self.logger.warning("Token has been revoked", token_id=token_id)
                     raise TokenRevokedError(f"Token {token_id} has been revoked")
-                
+
                 # Verify groups match store
                 if set(token_record.groups) != set(groups):
                     self.logger.error(
@@ -406,7 +323,12 @@ class AuthService:
             issued_at = datetime.fromtimestamp(payload["iat"])
             expires_at = datetime.fromtimestamp(payload["exp"])
 
-            self.logger.debug("Token verified", token_id=token_id, groups=groups, expires_at=expires_at.isoformat())
+            self.logger.debug(
+                "Token verified",
+                token_id=token_id,
+                groups=groups,
+                expires_at=expires_at.isoformat(),
+            )
 
             return TokenInfo(
                 token=token,
@@ -437,7 +359,7 @@ class AuthService:
         Returns:
             True if token was found and revoked, False if not found
         """
-        self._load_token_store()
+        self._reload_store()
 
         try:
             # Decode token to get UUID (don't verify expiry for revocation)
@@ -460,19 +382,20 @@ class AuthService:
             self.logger.warning("Invalid token for revocation", error=str(e))
             return False
 
-        if token_id in self._token_store:
-            token_record = self._token_store[token_id]
-            
+        if self._token_store.exists(token_id):
+            token_record = self._token_store.get(token_id)
+
             # Check if already revoked
             if token_record.status == "revoked":
                 self.logger.info("Token already revoked", token_id=token_id)
                 return True
-            
+
             # Soft-delete: set status and timestamp
             token_record.status = "revoked"
             token_record.revoked_at = datetime.utcnow()
-            
-            self._save_token_store()
+
+            # Update in store
+            self._token_store.put(token_id, token_record)
             self.logger.info("Token revoked", token_id=token_id, groups=token_record.groups)
             return True
         else:
@@ -492,13 +415,13 @@ class AuthService:
         Returns:
             List of TokenRecord objects
         """
-        self._load_token_store()
-        
-        records = list(self._token_store.values())
-        
+        self._reload_store()
+
+        records = list(self._token_store.list_all().values())
+
         if status is not None:
             records = [r for r in records if r.status == status]
-        
+
         return records
 
     def get_token_by_id(self, token_id: str) -> Optional[TokenRecord]:
@@ -510,8 +433,10 @@ class AuthService:
         Returns:
             TokenRecord if found, None otherwise
         """
-        self._load_token_store()
-        return self._token_store.get(token_id)
+        self._reload_store()
+        if self._token_store.exists(token_id):
+            return self._token_store.get(token_id)
+        return None
 
     def resolve_token_groups(
         self,
@@ -534,10 +459,10 @@ class AuthService:
             ValueError: If token is invalid
         """
         token_info = self.verify_token(token)
-        
+
         resolved_groups: List[Group] = []
         seen_names: set = set()
-        
+
         # Get all groups from token
         for group_name in token_info.groups:
             if group_name in seen_names:
@@ -547,11 +472,11 @@ class AuthService:
                 if include_defunct or group.is_active:
                     resolved_groups.append(group)
                     seen_names.add(group_name)
-        
+
         # Always include public group
         if "public" not in seen_names:
             public_group = self._group_registry.get_group_by_name("public")
             if public_group is not None:
                 resolved_groups.append(public_group)
-        
+
         return resolved_groups

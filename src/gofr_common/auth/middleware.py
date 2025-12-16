@@ -5,10 +5,9 @@ including multi-group authorization helpers.
 """
 
 import hashlib
-from functools import wraps
 from typing import Any, Callable, List, Optional, Protocol
 
-from fastapi import Depends, HTTPException, Request, Security
+from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .service import AuthService

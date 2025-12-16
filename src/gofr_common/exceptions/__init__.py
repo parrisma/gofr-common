@@ -20,12 +20,12 @@ Projects can create aliases for backward compatibility:
 """
 
 from gofr_common.exceptions.base import (
+    ConfigurationError,
     GofrError,
-    ValidationError,
+    RegistryError,
     ResourceNotFoundError,
     SecurityError,
-    ConfigurationError,
-    RegistryError,
+    ValidationError,
 )
 
 __all__ = [

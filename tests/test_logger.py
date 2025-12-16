@@ -14,9 +14,9 @@ from unittest import mock
 import pytest
 
 from gofr_common.logger import (
-    Logger,
-    DefaultLogger,
     ConsoleLogger,
+    DefaultLogger,
+    Logger,
     StructuredLogger,
     create_logger,
     get_logger,
@@ -62,7 +62,7 @@ class TestDefaultLogger:
         output = io.StringIO()
         logger = DefaultLogger(output=output)
         logger.info("Test message")
-        
+
         output_str = output.getvalue()
         assert "INFO" in output_str
         assert "Test message" in output_str
@@ -72,7 +72,7 @@ class TestDefaultLogger:
         output = io.StringIO()
         logger = DefaultLogger(output=output)
         logger.info("Test message")
-        
+
         output_str = output.getvalue()
         assert "session:" in output_str
         assert logger.get_session_id()[:8] in output_str
@@ -82,7 +82,7 @@ class TestDefaultLogger:
         output = io.StringIO()
         logger = DefaultLogger(output=output)
         logger.info("Test message")
-        
+
         output_str = output.getvalue()
         # ISO format contains 'T' between date and time
         assert "T" in output_str
@@ -92,7 +92,7 @@ class TestDefaultLogger:
         output = io.StringIO()
         logger = DefaultLogger(output=output, include_timestamp=False)
         logger.info("Test message")
-        
+
         output_str = output.getvalue()
         # Without timestamp, should start with level
         assert output_str.startswith("[INFO]")
@@ -101,13 +101,13 @@ class TestDefaultLogger:
         """Test that all log levels work."""
         output = io.StringIO()
         logger = DefaultLogger(output=output)
-        
+
         logger.debug("Debug message")
         logger.info("Info message")
         logger.warning("Warning message")
         logger.error("Error message")
         logger.critical("Critical message")
-        
+
         output_str = output.getvalue()
         assert "DEBUG" in output_str
         assert "INFO" in output_str
@@ -120,7 +120,7 @@ class TestDefaultLogger:
         output = io.StringIO()
         logger = DefaultLogger(output=output)
         logger.info("Test message", key="value", number=42)
-        
+
         output_str = output.getvalue()
         assert "key=value" in output_str
         assert "number=42" in output_str
@@ -130,7 +130,7 @@ class TestDefaultLogger:
         output = io.StringIO()
         logger = DefaultLogger(name="test-logger", output=output)
         logger.info("Test message")
-        
+
         output_str = output.getvalue()
         assert "test-logger" in output_str
 
@@ -166,7 +166,7 @@ class TestConsoleLogger:
     def test_console_logger_all_levels(self):
         """Test that all log levels are available."""
         logger = ConsoleLogger(name="test-all-levels")
-        
+
         # These should not raise exceptions
         logger.debug("Debug")
         logger.info("Info")
@@ -195,7 +195,7 @@ class TestStructuredLogger:
         """Test that StructuredLogger outputs text format by default."""
         logger = StructuredLogger(name="test-text", json_format=False)
         logger.info("Test message")
-        
+
         captured = capsys.readouterr()
         assert "INFO" in captured.out
         assert "Test message" in captured.out
@@ -205,7 +205,7 @@ class TestStructuredLogger:
         """Test that StructuredLogger can output JSON format."""
         logger = StructuredLogger(name="test-json", json_format=True)
         logger.info("Test message")
-        
+
         captured = capsys.readouterr()
         # Should be valid JSON
         log_entry = json.loads(captured.out.strip())
@@ -218,7 +218,7 @@ class TestStructuredLogger:
         """Test that JSON format includes extra kwargs."""
         logger = StructuredLogger(name="test-json-extras", json_format=True)
         logger.info("Test message", request_id="abc123", duration_ms=45)
-        
+
         captured = capsys.readouterr()
         log_entry = json.loads(captured.out.strip())
         assert log_entry["request_id"] == "abc123"
@@ -228,7 +228,7 @@ class TestStructuredLogger:
         """Test that text format includes extra kwargs."""
         logger = StructuredLogger(name="test-text-extras", json_format=False)
         logger.info("Test message", key="value")
-        
+
         captured = capsys.readouterr()
         assert "key=value" in captured.out
 
@@ -236,18 +236,18 @@ class TestStructuredLogger:
         """Test that StructuredLogger can write to a file."""
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".log") as f:
             log_file = f.name
-        
+
         try:
             logger = StructuredLogger(name="test-file", log_file=log_file)
             logger.info("File test message")
-            
+
             # Force flush
             for handler in logger._logger.handlers:
                 handler.flush()
-            
+
             with open(log_file, "r") as f:
                 content = f.read()
-            
+
             assert "File test message" in content
         finally:
             os.unlink(log_file)
@@ -255,13 +255,13 @@ class TestStructuredLogger:
     def test_structured_logger_all_levels(self, capsys):
         """Test that all log levels work with StructuredLogger."""
         logger = StructuredLogger(name="test-levels", level=logging.DEBUG)
-        
+
         logger.debug("Debug message")
         logger.info("Info message")
         logger.warning("Warning message")
         logger.error("Error message")
         logger.critical("Critical message")
-        
+
         captured = capsys.readouterr()
         assert "DEBUG" in captured.out
         assert "INFO" in captured.out
@@ -274,7 +274,7 @@ class TestStructuredLogger:
         logger = StructuredLogger(name="test-reserved", json_format=True)
         # "name" is a reserved LogRecord attribute
         logger.info("Test", name="should be prefixed")
-        
+
         captured = capsys.readouterr()
         log_entry = json.loads(captured.out.strip())
         # The reserved key should be prefixed with underscore
@@ -294,7 +294,7 @@ class TestLoggerFactoryFunctions:
         logger = create_logger(name="test-level-factory", level=logging.WARNING)
         logger.info("Should not appear")
         logger.warning("Should appear")
-        
+
         captured = capsys.readouterr()
         assert "Should not appear" not in captured.out
         assert "Should appear" in captured.out
@@ -303,7 +303,7 @@ class TestLoggerFactoryFunctions:
         """Test that create_logger respects the json_format parameter."""
         logger = create_logger(name="test-json-factory", json_format=True)
         logger.info("JSON test")
-        
+
         captured = capsys.readouterr()
         log_entry = json.loads(captured.out.strip())
         assert log_entry["message"] == "JSON test"
@@ -314,7 +314,7 @@ class TestLoggerFactoryFunctions:
             logger = get_logger("test-project")
             logger.info("Should not appear")
             logger.warning("Should appear")
-        
+
         captured = capsys.readouterr()
         assert "Should not appear" not in captured.out
         assert "Should appear" in captured.out
@@ -324,7 +324,7 @@ class TestLoggerFactoryFunctions:
         with mock.patch.dict(os.environ, {"TEST_JSON_ENV_LOG_JSON": "true"}):
             logger = get_logger("test-json-env")
             logger.info("JSON env test")
-        
+
         captured = capsys.readouterr()
         log_entry = json.loads(captured.out.strip())
         assert log_entry["message"] == "JSON env test"
@@ -341,7 +341,7 @@ class TestLoggerFactoryFunctions:
         logger = get_logger("test-default-level")
         logger.debug("Debug should not appear")
         logger.info("Info should appear")
-        
+
         captured = capsys.readouterr()
         assert "Debug should not appear" not in captured.out
         assert "Info should appear" in captured.out
@@ -357,7 +357,7 @@ class TestLoggerConsistency:
             logger = logger_class()
         else:
             logger = logger_class(name=f"test-{logger_class.__name__}")
-        
+
         session_id = logger.get_session_id()
         assert session_id is not None
         assert isinstance(session_id, str)
@@ -370,7 +370,7 @@ class TestLoggerConsistency:
             logger = logger_class(output=io.StringIO())
         else:
             logger = logger_class(name=f"test-kwargs-{logger_class.__name__}")
-        
+
         # Should not raise exceptions
         logger.info("Test", key="value", number=42, flag=True)
 
@@ -382,6 +382,6 @@ class TestLoggerConsistency:
                 logger = logger_class()
             else:
                 logger = logger_class(name=f"test-method-{level_method}")
-            
+
             assert hasattr(logger, level_method)
             assert callable(getattr(logger, level_method))

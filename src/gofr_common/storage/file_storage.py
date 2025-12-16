@@ -3,17 +3,17 @@
 Uses separate metadata and blob repositories for better separation of concerns.
 """
 
-import uuid
+import logging
 import re
+import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict
-import logging
+from typing import Dict, List, Optional, Tuple
 
 from .base import StorageBase
-from .metadata import JsonMetadataRepository, BlobMetadata
 from .blob import FileBlobRepository
 from .exceptions import PermissionDeniedError
+from .metadata import BlobMetadata, JsonMetadataRepository
 
 # Use standard logging if gofr_common logger not available
 try:
@@ -39,7 +39,7 @@ class FileStorage(StorageBase):
             storage_dir: Directory to store blobs and metadata
         """
         storage_path = Path(storage_dir)
-        
+
         # Initialize repositories
         self.metadata_repo = JsonMetadataRepository(storage_path / "metadata.json")
         self.blob_repo = FileBlobRepository(storage_path)
@@ -195,15 +195,15 @@ class FileStorage(StorageBase):
 
         # Delete blob
         blob_deleted = self.blob_repo.delete(guid, metadata.format if metadata else None)
-        
+
         # Delete metadata
         meta_deleted = self.metadata_repo.delete(guid)
 
         # Remove from alias maps
         if guid in self._guid_to_alias:
-            alias = self._guid_to_alias[guid]
+            self._guid_to_alias[guid]
             del self._guid_to_alias[guid]
-            # We don't easily know the group for the alias map without iterating, 
+            # We don't easily know the group for the alias map without iterating,
             # but rebuild will fix it eventually. For now, just rebuild.
             self._rebuild_alias_maps()
 
@@ -249,7 +249,7 @@ class FileStorage(StorageBase):
                 if metadata and metadata.group != group:
                     return False
             return True
-            
+
         # Fallback to blob check
         return self.blob_repo.exists(guid)
 
@@ -291,21 +291,21 @@ class FileStorage(StorageBase):
         """
         if not alias or not re.match(r"^[a-zA-Z0-9_-]+$", alias):
             raise ValueError("Alias must be alphanumeric (hyphens and underscores allowed)")
-            
+
         # Check if alias already exists for this group
         if group in self._alias_to_guid and alias in self._alias_to_guid[group]:
             existing_guid = self._alias_to_guid[group][alias]
             if existing_guid != guid:
                 raise ValueError(f"Alias '{alias}' already exists for group '{group}'")
-                
+
         # Store in metadata (using extra fields)
         metadata = self.metadata_repo.get(guid)
         if not metadata:
             raise ValueError(f"GUID {guid} not found")
-            
+
         if metadata.group != group:
             raise PermissionDeniedError(f"GUID {guid} does not belong to group {group}")
-            
+
         # Update metadata with alias
         # We store aliases in a list in metadata to support multiple aliases per blob
         aliases = metadata.extra.get("aliases", [])
@@ -313,7 +313,7 @@ class FileStorage(StorageBase):
             aliases.append(alias)
             metadata.extra["aliases"] = aliases
             self.metadata_repo.save(metadata)
-            
+
         # Update in-memory maps
         self._rebuild_alias_maps()
 
@@ -344,7 +344,7 @@ class FileStorage(StorageBase):
         for group_aliases in self._alias_to_guid.values():
             if identifier in group_aliases:
                 return group_aliases[identifier]
-                
+
         # If not an alias, return as is (caller will validate if it's a GUID)
         return identifier
 
@@ -352,19 +352,19 @@ class FileStorage(StorageBase):
         """Rebuild in-memory alias maps from metadata"""
         self._alias_to_guid = {}
         self._guid_to_alias = {}
-        
+
         # Iterate all metadata
         # Note: This could be slow for large datasets. In production, use a database.
         all_guids = self.metadata_repo.list_all()
-        
+
         for guid in all_guids:
             metadata = self.metadata_repo.get(guid)
             if metadata and "aliases" in metadata.extra:
                 group = metadata.group or "default"
-                
+
                 if group not in self._alias_to_guid:
                     self._alias_to_guid[group] = {}
-                    
+
                 for alias in metadata.extra["aliases"]:
                     self._alias_to_guid[group][alias] = guid
                     self._guid_to_alias[guid] = alias  # Last one wins for reverse lookup

@@ -6,7 +6,7 @@ All GOFR exceptions include structured error information:
 - details: Additional context for debugging/recovery
 """
 
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 
 class GofrError(Exception):

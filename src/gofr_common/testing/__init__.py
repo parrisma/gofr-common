@@ -14,14 +14,14 @@ with a comment explaining why.
 
 Usage in project tests:
     from gofr_common.testing import CodeQualityChecker
-    
+
     checker = CodeQualityChecker(project_root=Path(__file__).parent.parent)
     checker.run_ruff_check(["app", "test"])
     checker.run_pyright_check(["app", "test"])
-    
+
 Or use the pytest base class (recommended):
     from gofr_common.testing.pytest_fixtures import CodeQualityTestBase
-    
+
     class TestCodeQuality(CodeQualityTestBase):
         check_dirs = ["app", "test", "scripts"]
 """
@@ -41,7 +41,7 @@ __all__ = [
 @dataclass
 class CheckResult:
     """Result of a code quality check."""
-    
+
     success: bool
     stdout: str
     stderr: str
@@ -51,34 +51,34 @@ class CheckResult:
 
 class CodeQualityChecker:
     """Code quality checker for GOFR projects.
-    
+
     Provides methods to run linting (ruff) and type checking (pyright)
     with consistent error messages and zero-tolerance policy enforcement.
-    
+
     Example:
         checker = CodeQualityChecker(project_root=Path("/path/to/project"))
-        
+
         # Run all checks
         result = checker.run_ruff_check(["app", "test"])
         if not result.success:
             print(result.error_message)
-            
+
         result = checker.run_pyright_check(["app"])
         if not result.success:
             print(result.error_message)
     """
-    
+
     def __init__(self, project_root: Path | str):
         """Initialize the code quality checker.
-        
+
         Args:
             project_root: Path to the project root directory
         """
         self.project_root = Path(project_root).resolve()
-    
+
     def find_ruff(self) -> Optional[Path]:
         """Find the ruff executable.
-        
+
         Returns:
             Path to ruff executable, or None if not found.
         """
@@ -86,17 +86,17 @@ class CodeQualityChecker:
         venv_ruff = self.project_root / ".venv" / "bin" / "ruff"
         if venv_ruff.exists():
             return venv_ruff
-        
+
         # Try shutil.which (system PATH)
         ruff_path = shutil.which("ruff")
         if ruff_path:
             return Path(ruff_path)
-        
+
         return None
-    
+
     def find_pyright(self) -> Optional[Path]:
         """Find the pyright executable.
-        
+
         Returns:
             Path to pyright executable, or None if not found.
         """
@@ -104,20 +104,20 @@ class CodeQualityChecker:
         venv_pyright = self.project_root / ".venv" / "bin" / "pyright"
         if venv_pyright.exists():
             return venv_pyright
-        
+
         # Try shutil.which (system PATH)
         pyright_path = shutil.which("pyright")
         if pyright_path:
             return Path(pyright_path)
-        
+
         return None
-    
+
     def run_ruff_check(self, check_dirs: List[str]) -> CheckResult:
         """Run ruff linting check.
-        
+
         Args:
             check_dirs: List of directories to check (e.g., ["app", "test"])
-            
+
         Returns:
             CheckResult with success status and any error messages.
             If ruff is not found, returns success=True with return_code=-1 (skip).
@@ -131,7 +131,7 @@ class CodeQualityChecker:
                 return_code=-1,
                 error_message="ruff not found - install with: pip install ruff"
             )
-        
+
         # Filter to directories that exist
         existing_dirs = [d for d in check_dirs if (self.project_root / d).exists()]
         if not existing_dirs:
@@ -141,7 +141,7 @@ class CodeQualityChecker:
                 stderr="",
                 return_code=0
             )
-        
+
         # ruff is a Path now, convert to string for command
         result = subprocess.run(
             [str(ruff), "check"] + existing_dirs + ["--output-format=concise", "--no-fix"],
@@ -149,7 +149,7 @@ class CodeQualityChecker:
             capture_output=True,
             text=True,
         )
-        
+
         if result.returncode != 0:
             error_message = self._format_ruff_error(result.stdout, str(ruff), existing_dirs)
             return CheckResult(
@@ -159,20 +159,20 @@ class CodeQualityChecker:
                 return_code=result.returncode,
                 error_message=error_message
             )
-        
+
         return CheckResult(
             success=True,
             stdout=result.stdout,
             stderr=result.stderr,
             return_code=result.returncode
         )
-    
+
     def run_pyright_check(self, check_dirs: List[str]) -> CheckResult:
         """Run pyright type check.
-        
+
         Args:
             check_dirs: List of directories to check (e.g., ["app", "test"])
-            
+
         Returns:
             CheckResult with success status and any error messages.
             If pyright is not found, returns success=True with return_code=-1 (skip).
@@ -186,7 +186,7 @@ class CodeQualityChecker:
                 return_code=-1,
                 error_message="pyright not found - install with: pip install pyright"
             )
-        
+
         # Filter to directories that exist
         existing_dirs = [d for d in check_dirs if (self.project_root / d).exists()]
         if not existing_dirs:
@@ -196,7 +196,7 @@ class CodeQualityChecker:
                 stderr="",
                 return_code=0
             )
-        
+
         # pyright is a Path now, convert to string for command
         cmd = [str(pyright)] + existing_dirs
         result = subprocess.run(
@@ -205,7 +205,7 @@ class CodeQualityChecker:
             capture_output=True,
             text=True,
         )
-        
+
         if result.returncode != 0:
             error_message = self._format_pyright_error(result.stdout, result.stderr)
             return CheckResult(
@@ -215,20 +215,20 @@ class CodeQualityChecker:
                 return_code=result.returncode,
                 error_message=error_message
             )
-        
+
         return CheckResult(
             success=True,
             stdout=result.stdout,
             stderr=result.stderr,
             return_code=result.returncode
         )
-    
+
     def check_syntax(self, check_dirs: List[str]) -> CheckResult:
         """Check all Python files for syntax errors.
-        
+
         Args:
             check_dirs: List of directories to check
-            
+
         Returns:
             CheckResult with success status and any error messages.
         """
@@ -237,14 +237,14 @@ class CodeQualityChecker:
             dir_path = self.project_root / directory
             if dir_path.exists():
                 python_files.extend(dir_path.rglob("*.py"))
-        
+
         syntax_errors = []
         for py_file in python_files:
             try:
                 compile(py_file.read_text(), str(py_file), "exec")
             except SyntaxError as e:
                 syntax_errors.append(f"{py_file}: {e}")
-        
+
         if syntax_errors:
             error_message = self._format_syntax_errors(syntax_errors)
             return CheckResult(
@@ -254,20 +254,20 @@ class CodeQualityChecker:
                 return_code=1,
                 error_message=error_message
             )
-        
+
         return CheckResult(
             success=True,
             stdout=f"Checked {len(python_files)} files",
             stderr="",
             return_code=0
         )
-    
+
     def get_code_statistics(self, check_dirs: List[str]) -> Tuple[int, int]:
         """Get code statistics for the project.
-        
+
         Args:
             check_dirs: List of directories to analyze
-            
+
         Returns:
             Tuple of (file_count, line_count)
         """
@@ -276,29 +276,29 @@ class CodeQualityChecker:
             dir_path = self.project_root / directory
             if dir_path.exists():
                 python_files.extend(dir_path.rglob("*.py"))
-        
+
         total_lines = 0
         for py_file in python_files:
             try:
                 total_lines += len(py_file.read_text().splitlines())
             except Exception:
                 pass
-        
+
         return len(python_files), total_lines
-    
+
     def check_ruff_config(self) -> bool:
         """Check if ruff configuration exists in pyproject.toml.
-        
+
         Returns:
             True if configuration exists, False otherwise.
         """
         pyproject = self.project_root / "pyproject.toml"
         if not pyproject.exists():
             return False
-        
+
         content = pyproject.read_text()
         return "[tool.ruff]" in content
-    
+
     def _format_ruff_error(self, stdout: str, ruff: str, check_dirs: List[str]) -> str:
         """Format a ruff error message."""
         return "\n".join([
@@ -334,7 +334,7 @@ class CodeQualityChecker:
             "",
             "=" * 80,
         ])
-    
+
     def _format_pyright_error(self, stdout: str, stderr: str) -> str:
         """Format a pyright error message."""
         return "\n".join([
@@ -374,7 +374,7 @@ class CodeQualityChecker:
             "",
             "=" * 80,
         ])
-    
+
     def _format_syntax_errors(self, errors: List[str]) -> str:
         """Format syntax error messages."""
         return "\n".join([

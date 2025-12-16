@@ -4,11 +4,11 @@ Separates metadata management from blob storage for better separation of concern
 """
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any, List
-import logging
+from typing import Any, Dict, List, Optional
 
 # Use standard logging if gofr_common logger not available
 try:
@@ -160,9 +160,9 @@ class JsonMetadataRepository(MetadataRepository):
         data = self._load()
         if group is None:
             return list(data.keys())
-        
+
         return [
-            guid for guid, meta in data.items() 
+            guid for guid, meta in data.items()
             if meta.get("group") == group
         ]
 
@@ -176,12 +176,12 @@ class JsonMetadataRepository(MetadataRepository):
         data = self._load()
         result = []
         now = datetime.utcnow()
-        
+
         for guid, meta_dict in data.items():
             # Filter by group if specified
             if group is not None and meta_dict.get("group") != group:
                 continue
-                
+
             # Check age
             try:
                 created_at = datetime.fromisoformat(meta_dict.get("created_at", ""))
@@ -190,5 +190,5 @@ class JsonMetadataRepository(MetadataRepository):
                     result.append(BlobMetadata.from_dict(guid, meta_dict))
             except (ValueError, TypeError):
                 continue
-                
+
         return result

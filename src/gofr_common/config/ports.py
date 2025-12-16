@@ -22,16 +22,16 @@ from typing import Dict, NamedTuple
 
 class ServicePorts(NamedTuple):
     """Port configuration for a single service."""
-    
+
     mcp: int
     mcpo: int
     web: int
-    
+
     @property
     def base(self) -> int:
         """Return the base port for this service."""
         return self.mcp
-    
+
     def as_dict(self) -> Dict[str, int]:
         """Return ports as dictionary."""
         return {
@@ -39,14 +39,14 @@ class ServicePorts(NamedTuple):
             'mcpo': self.mcpo,
             'web': self.web
         }
-    
+
     def as_env_dict(self, prefix: str) -> Dict[str, str]:
         """
         Return ports as environment variable dictionary.
-        
+
         Args:
             prefix: Environment variable prefix (e.g., 'GOFR_DOC')
-            
+
         Returns:
             Dictionary of environment variables
         """
@@ -100,13 +100,13 @@ PORTS = {
 def get_ports(service_name: str) -> ServicePorts:
     """
     Get port configuration for a service.
-    
+
     Args:
         service_name: Name of the service (e.g., 'gofr-doc')
-        
+
     Returns:
         ServicePorts configuration
-        
+
     Raises:
         KeyError: If service name is not registered
     """
@@ -116,20 +116,20 @@ def get_ports(service_name: str) -> ServicePorts:
 def register_service(service_name: str, base_port: int) -> ServicePorts:
     """
     Register a new service with port allocation.
-    
+
     Args:
         service_name: Name of the service
         base_port: Base port for the service (must be multiple of 10)
-        
+
     Returns:
         ServicePorts configuration
-        
+
     Raises:
         ValueError: If base_port is not valid or conflicts with existing
     """
     if base_port % 10 != 0:
         raise ValueError(f"Base port must be a multiple of 10, got {base_port}")
-    
+
     # Check for conflicts
     for name, ports in PORTS.items():
         if ports.base == base_port:
@@ -141,7 +141,7 @@ def register_service(service_name: str, base_port: int) -> ServicePorts:
                 f"Port range {base_port}-{base_port+2} conflicts with "
                 f"service '{name}' ({ports.base}-{ports.base+2})"
             )
-    
+
     service_ports = ServicePorts(
         mcp=base_port,
         mcpo=base_port + 1,
@@ -154,7 +154,7 @@ def register_service(service_name: str, base_port: int) -> ServicePorts:
 def list_services() -> Dict[str, ServicePorts]:
     """
     List all registered services and their ports.
-    
+
     Returns:
         Dictionary of service names to ServicePorts
     """
@@ -164,13 +164,13 @@ def list_services() -> Dict[str, ServicePorts]:
 def next_available_base() -> int:
     """
     Get the next available base port.
-    
+
     Returns:
         Next available base port (multiple of 10)
     """
     if not PORTS:
         return _BASE_PORT
-    
+
     max_base = max(ports.base for ports in PORTS.values())
     return max_base + _PORT_INCREMENT
 

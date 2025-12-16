@@ -3,10 +3,7 @@
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 
-import pytest
-
 from gofr_common.auth.tokens import TokenInfo, TokenRecord
-
 
 # ============================================================================
 # Test TokenRecord dataclass

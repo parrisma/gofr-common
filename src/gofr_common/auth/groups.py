@@ -2,22 +2,20 @@
 
 Provides a central registry of groups with support for:
 - Reserved groups (public, admin) that cannot be made defunct
-- File-based or in-memory storage
+- Pluggable storage backends (memory, file, vault)
 - Soft-delete (defunct) rather than hard delete
 """
 
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, FrozenSet, List, Optional
 from uuid import UUID, uuid4
 
 from gofr_common.logger import Logger, create_logger
 
+from .backends import GroupStore
 
 # Reserved group names that always exist and cannot be made defunct
 RESERVED_GROUPS: FrozenSet[str] = frozenset({"public", "admin"})
@@ -105,16 +103,19 @@ class GroupNotFoundError(GroupRegistryError):
 class GroupRegistry:
     """Central registry for managing groups.
 
-    Supports both file-based and in-memory storage. Reserved groups
-    (public, admin) are automatically created and protected from
-    being made defunct.
+    Supports pluggable storage backends via the GroupStore protocol.
+    Reserved groups (public, admin) are automatically created and
+    protected from being made defunct.
 
     Example:
-        # File-based storage
-        registry = GroupRegistry(store_path="/path/to/groups.json")
-
         # In-memory storage (for testing)
-        registry = GroupRegistry(store_path=":memory:")
+        registry = GroupRegistry(store=MemoryGroupStore())
+
+        # File-based storage
+        registry = GroupRegistry(store=FileGroupStore("/path/to/groups.json"))
+
+        # Vault-backed storage
+        registry = GroupRegistry(store=VaultGroupStore(client, prefix="gofr/auth"))
 
         # Create a group
         group = registry.create_group("users", "Regular users")
@@ -129,16 +130,14 @@ class GroupRegistry:
 
     def __init__(
         self,
-        store_path: Optional[str] = None,
+        store: GroupStore,
         logger: Optional[Logger] = None,
         auto_bootstrap: bool = True,
     ):
         """Initialize the group registry.
 
         Args:
-            store_path: Path to groups.json file.
-                       If ":memory:", uses in-memory storage.
-                       If None, defaults to "data/auth/groups.json"
+            store: GroupStore instance for storage backend (memory, file, vault)
             logger: Optional logger instance
             auto_bootstrap: If True, automatically ensure reserved groups exist
         """
@@ -147,76 +146,15 @@ class GroupRegistry:
         else:
             self.logger = create_logger(name="group-registry")
 
-        # Check for in-memory mode
-        self._use_memory_store = store_path == ":memory:"
-
-        if self._use_memory_store:
-            self.store_path: Optional[Path] = None
-            self._groups: Dict[str, Group] = {}  # keyed by UUID string
-            self.logger.debug("GroupRegistry initialized with in-memory store")
-        else:
-            if store_path:
-                self.store_path = Path(store_path)
-            else:
-                self.store_path = Path("data/auth/groups.json")
-            self._groups = {}
-            self._load_store()
-            self.logger.debug(
-                "GroupRegistry initialized",
-                store_path=str(self.store_path),
-                groups_count=len(self._groups),
-            )
+        self._store = store
+        self.logger.debug(
+            "GroupRegistry initialized",
+            store_type=type(store).__name__,
+        )
 
         # Bootstrap reserved groups if requested
         if auto_bootstrap:
             self.ensure_reserved_groups()
-
-    def _load_store(self) -> None:
-        """Load groups from disk."""
-        if self._use_memory_store:
-            return
-
-        assert self.store_path is not None
-
-        if self.store_path.exists():
-            try:
-                with open(self.store_path, "r") as f:
-                    data = json.load(f)
-                self._groups = {
-                    group_id: Group.from_dict(group_data)
-                    for group_id, group_data in data.items()
-                }
-                self.logger.debug(
-                    "Group store loaded",
-                    groups_count=len(self._groups),
-                )
-            except Exception as e:
-                self.logger.error("Failed to load group store", error=str(e))
-                self._groups = {}
-        else:
-            self._groups = {}
-
-    def _save_store(self) -> None:
-        """Save groups to disk."""
-        if self._use_memory_store:
-            return
-
-        assert self.store_path is not None
-
-        try:
-            self.store_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.store_path, "w") as f:
-                data = {
-                    group_id: group.to_dict()
-                    for group_id, group in self._groups.items()
-                }
-                json.dump(data, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            self.logger.debug("Group store saved", groups_count=len(self._groups))
-        except Exception as e:
-            self.logger.error("Failed to save group store", error=str(e))
-            raise
 
     def ensure_reserved_groups(self) -> None:
         """Ensure reserved groups exist.
@@ -229,7 +167,6 @@ class GroupRegistry:
             "admin": "Administrative access - required for group and token management",
         }
 
-        created_any = False
         for name in RESERVED_GROUPS:
             existing = self.get_group_by_name(name)
             if existing is None:
@@ -241,12 +178,8 @@ class GroupRegistry:
                     created_at=datetime.utcnow(),
                     is_reserved=True,
                 )
-                self._groups[str(group.id)] = group
-                created_any = True
+                self._store.put(str(group.id), group)
                 self.logger.info(f"Created reserved group: {name}", group_id=str(group.id))
-
-        if created_any:
-            self._save_store()
 
     def create_group(self, name: str, description: Optional[str] = None) -> Group:
         """Create a new group.
@@ -280,13 +213,12 @@ class GroupRegistry:
             is_reserved=False,
         )
 
-        self._groups[str(group.id)] = group
-        self._save_store()
+        self._store.put(str(group.id), group)
 
         self.logger.info(
             "Group created",
             group_id=str(group.id),
-            name=name,
+            _name=name,  # Use _name to avoid conflict with logger's name param
         )
 
         return group
@@ -300,7 +232,9 @@ class GroupRegistry:
         Returns:
             The Group if found, None otherwise
         """
-        return self._groups.get(str(group_id))
+        if self._store.exists(str(group_id)):
+            return self._store.get(str(group_id))
+        return None
 
     def get_group_by_name(self, name: str) -> Optional[Group]:
         """Get a group by its name.
@@ -311,10 +245,7 @@ class GroupRegistry:
         Returns:
             The Group if found, None otherwise
         """
-        for group in self._groups.values():
-            if group.name == name:
-                return group
-        return None
+        return self._store.get_by_name(name)
 
     def list_groups(self, include_defunct: bool = False) -> List[Group]:
         """List all groups.
@@ -325,9 +256,10 @@ class GroupRegistry:
         Returns:
             List of groups
         """
+        all_groups = list(self._store.list_all().values())
         if include_defunct:
-            return list(self._groups.values())
-        return [g for g in self._groups.values() if g.is_active]
+            return all_groups
+        return [g for g in all_groups if g.is_active]
 
     def make_defunct(self, group_id: UUID) -> bool:
         """Mark a group as defunct (soft delete).
@@ -355,7 +287,8 @@ class GroupRegistry:
 
         group.is_active = False
         group.defunct_at = datetime.utcnow()
-        self._save_store()
+        # Update in store
+        self._store.put(str(group_id), group)
 
         self.logger.info(
             "Group made defunct",

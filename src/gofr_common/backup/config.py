@@ -7,13 +7,14 @@ Supports environment variable overrides with project-specific prefixes.
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Callable
+from typing import List, Optional
+
 from pydantic import BaseModel, Field, field_validator
 
 
 class BackupConfig(BaseModel):
     """Backup service configuration with environment variable overrides
-    
+
     Parameterized to work with any GOFR project by specifying an env_prefix.
     """
 
@@ -26,7 +27,7 @@ class BackupConfig(BaseModel):
         default="GOFR",
         description="Environment variable prefix (e.g., 'GOFR_PLOT')"
     )
-    
+
     # Backup scheduling
     enabled: bool = Field(
         default=True,
@@ -36,7 +37,7 @@ class BackupConfig(BaseModel):
         default="0 2 * * *",
         description="Backup schedule in cron format (default: 2 AM daily)"
     )
-    
+
     # Retention policies
     retention_days: int = Field(
         default=30,
@@ -48,13 +49,13 @@ class BackupConfig(BaseModel):
         description="Maximum number of backups to keep (count-based retention)",
         ge=1
     )
-    
+
     # What to backup - customizable per project
     backup_paths: List[tuple[str, str]] = Field(
         default_factory=list,
         description="List of (name, relative_path) tuples to backup"
     )
-    
+
     # Compression settings
     compression: str = Field(
         default="gzip",
@@ -66,7 +67,7 @@ class BackupConfig(BaseModel):
         ge=1,
         le=9
     )
-    
+
     # Housekeeping
     cleanup_on_start: bool = Field(
         default=True,
@@ -76,7 +77,7 @@ class BackupConfig(BaseModel):
         default=True,
         description="Verify backup integrity after creation"
     )
-    
+
     # Naming and paths
     backup_prefix: str = Field(
         default="gofr",
@@ -86,7 +87,7 @@ class BackupConfig(BaseModel):
         default="%Y%m%d_%H%M%S",
         description="Timestamp format for backup filenames"
     )
-    
+
     # Directories
     data_dir: Path = Field(
         default=Path("/data"),
@@ -96,7 +97,7 @@ class BackupConfig(BaseModel):
         default=Path("/backups"),
         description="Backup destination directory"
     )
-    
+
     # Tiered retention (optional)
     enable_weekly: bool = Field(
         default=False,
@@ -163,21 +164,21 @@ class BackupConfig(BaseModel):
 
     def get_backup_paths(self) -> List[tuple[str, Path]]:
         """Get list of paths to backup based on configuration
-        
+
         Returns paths that actually exist on the filesystem.
         """
         paths = []
-        
+
         for name, relative_path in self.backup_paths:
             # Support both absolute and relative paths
             if relative_path.startswith('/'):
                 full_path = Path(relative_path)
             else:
                 full_path = self.data_dir / relative_path
-            
+
             if full_path.exists():
                 paths.append((name, full_path))
-        
+
         return paths
 
     @classmethod
@@ -188,12 +189,12 @@ class BackupConfig(BaseModel):
         default_backup_paths: Optional[List[tuple[str, str]]] = None
     ) -> "BackupConfig":
         """Create configuration from environment variables
-        
+
         Args:
             project_name: Name of the GOFR project (e.g., 'plot', 'doc', 'iq')
             env_prefix: Override environment variable prefix (default: GOFR_{PROJECT}_BACKUP)
             default_backup_paths: Default paths to backup if not specified in env
-        
+
         Returns:
             BackupConfig instance
         """
@@ -201,7 +202,7 @@ class BackupConfig(BaseModel):
             env_prefix = f"GOFR_{project_name.upper()}_BACKUP"
         else:
             env_prefix = env_prefix.rstrip('_')
-        
+
         # Default backup paths if not provided
         if default_backup_paths is None:
             default_backup_paths = [
@@ -209,7 +210,7 @@ class BackupConfig(BaseModel):
                 ("auth", "auth"),
                 ("logs", "../logs"),
             ]
-        
+
         # Parse backup paths from environment (comma-separated name:path pairs)
         # Format: GOFR_PLOT_BACKUP_PATHS="storage:storage,auth:auth,logs:../logs"
         backup_paths_env = os.getenv(f"{env_prefix}_PATHS", "")
@@ -221,7 +222,7 @@ class BackupConfig(BaseModel):
                     backup_paths.append((name.strip(), path.strip()))
         else:
             backup_paths = default_backup_paths
-        
+
         return cls(
             project_name=project_name,
             env_prefix=env_prefix,
