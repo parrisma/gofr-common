@@ -771,3 +771,172 @@ class TestAuthProvider:
             assert provider.service is not None
             assert provider.service.secret_key == "test-secret"
 
+
+# ============================================================================
+# Test TokenService (Low-level JWT Operations)
+# ============================================================================
+
+
+class TestTokenService:
+    """Tests for the TokenService class."""
+
+    def test_token_service_creation(self):
+        """Test creating a TokenService."""
+        from gofr_common.auth import MemoryTokenStore, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        assert service.secret_key == "test-secret"
+        assert service.store is store
+
+    def test_token_service_create_token(self):
+        """Test creating a token with TokenService."""
+        from gofr_common.auth import MemoryTokenStore, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        token = service.create(groups=["admin", "users"])
+        assert token is not None
+        assert isinstance(token, str)
+
+    def test_token_service_verify_token(self):
+        """Test verifying a token with TokenService."""
+        from gofr_common.auth import MemoryTokenStore, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        token = service.create(groups=["admin"])
+        info = service.verify(token)
+
+        assert info.groups == ["admin"]
+
+    def test_token_service_revoke_token(self):
+        """Test revoking a token with TokenService."""
+        from gofr_common.auth import MemoryTokenStore, TokenRevokedError, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        token = service.create(groups=["admin"])
+        assert service.revoke(token) is True
+
+        with pytest.raises(TokenRevokedError):
+            service.verify(token)
+
+    def test_token_service_list_all(self):
+        """Test listing all tokens with TokenService."""
+        from gofr_common.auth import MemoryTokenStore, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        service.create(groups=["admin"])
+        service.create(groups=["users"])
+
+        tokens = service.list_all()
+        assert len(tokens) == 2
+
+    def test_token_service_list_by_status(self):
+        """Test listing tokens by status with TokenService."""
+        from gofr_common.auth import MemoryTokenStore, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        token1 = service.create(groups=["admin"])
+        service.create(groups=["users"])
+        service.revoke(token1)
+
+        active = service.list_all(status="active")
+        revoked = service.list_all(status="revoked")
+
+        assert len(active) == 1
+        assert len(revoked) == 1
+
+    def test_token_service_fingerprint(self):
+        """Test token with fingerprint."""
+        from gofr_common.auth import MemoryTokenStore, TokenService, TokenValidationError
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        token = service.create(groups=["admin"], fingerprint="device123")
+
+        # Verify with matching fingerprint
+        info = service.verify(token, fingerprint="device123")
+        assert info.groups == ["admin"]
+
+        # Verify with mismatched fingerprint
+        with pytest.raises(TokenValidationError, match="fingerprint"):
+            service.verify(token, fingerprint="wrong-device")
+
+    def test_token_service_extra_claims(self):
+        """Test token with extra claims."""
+        from gofr_common.auth import MemoryTokenStore, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        token = service.create(
+            groups=["admin"],
+            extra_claims={"custom_field": "custom_value"},
+        )
+
+        # Decode without verification to check claim
+        payload = service.decode_without_verification(token)
+        assert payload.get("custom_field") == "custom_value"
+
+    def test_token_service_validation_errors(self):
+        """Test TokenService validation errors."""
+        from gofr_common.auth import MemoryTokenStore, TokenService, TokenValidationError
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        # Invalid token
+        with pytest.raises(TokenValidationError):
+            service.verify("invalid-token")
+
+    def test_token_service_not_found_error(self):
+        """Test TokenService not found error."""
+        import jwt
+
+        from gofr_common.auth import MemoryTokenStore, TokenNotFoundError, TokenService
+
+        store = MemoryTokenStore()
+        service = TokenService(store=store, secret_key="test-secret")
+
+        # Create a valid JWT but don't store it
+        fake_token = jwt.encode(
+            {"jti": "fake-id", "groups": ["admin"], "iat": 0, "exp": 9999999999, "nbf": 0},
+            "test-secret",
+            algorithm="HS256",
+        )
+
+        with pytest.raises(TokenNotFoundError):
+            service.verify(fake_token)
+
+    def test_token_service_exports(self):
+        """Test TokenService exports."""
+        from gofr_common.auth import (
+            TokenService,
+            TokenServiceError,
+            TokenValidationError,
+        )
+
+        assert TokenService is not None
+        assert TokenServiceError is not None
+        assert TokenValidationError is not None
+
+    def test_auth_service_has_tokens_property(self):
+        """Test that AuthService exposes TokenService via tokens property."""
+        from gofr_common.auth import TokenService
+
+        auth = create_memory_auth()
+
+        assert hasattr(auth, "tokens")
+        assert isinstance(auth.tokens, TokenService)
+        assert auth.tokens.secret_key == auth.secret_key

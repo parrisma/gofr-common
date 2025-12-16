@@ -95,6 +95,7 @@ from .middleware import (
 )
 from .provider import AuthProvider, SecurityAuditorProtocol, create_auth_provider
 from .service import AuthService, InvalidGroupError, TokenNotFoundError, TokenRevokedError
+from .token_service import TokenService, TokenServiceError, TokenValidationError
 from .tokens import TokenInfo, TokenRecord
 
 __all__ = [
@@ -103,6 +104,10 @@ __all__ = [
     "InvalidGroupError",
     "TokenNotFoundError",
     "TokenRevokedError",
+    # Token Service (low-level JWT operations)
+    "TokenService",
+    "TokenServiceError",
+    "TokenValidationError",
     # Provider (DI - recommended)
     "AuthProvider",
     "SecurityAuditorProtocol",

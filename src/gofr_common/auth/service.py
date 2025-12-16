@@ -4,12 +4,15 @@ Handles JWT token creation, validation, and group mapping.
 Parameterized to work with any GOFR project via env_prefix.
 Now supports multi-group tokens with a central group registry.
 Supports pluggable storage backends via TokenStore protocol.
+
+This is the high-level authentication service that combines token
+operations with group validation. For pure JWT operations without
+group validation, see TokenService.
 """
 
 import hashlib
-import os
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Literal, Optional, Protocol
+from typing import Any, Dict, List, Literal, Optional
 
 import jwt
 
@@ -17,21 +20,24 @@ from gofr_common.logger import Logger, create_logger
 
 from .backends import TokenStore
 from .groups import Group, GroupRegistry
+from .token_service import (
+    TokenNotFoundError,
+    TokenRevokedError,
+    TokenService,
+    TokenServiceError,
+    TokenValidationError,
+)
 from .tokens import TokenInfo, TokenRecord
 
-
-class SecurityAuditorProtocol(Protocol):
-    """Protocol for security auditor integration.
-
-    Projects can implement this protocol to receive security events
-    from the auth service.
-    """
-
-    def log_auth_failure(
-        self, client_id: str, reason: str, endpoint: Optional[str] = None, **details: Any
-    ) -> None:
-        """Log authentication failure."""
-        ...
+# Re-export for backward compatibility
+__all__ = [
+    "AuthService",
+    "InvalidGroupError",
+    "TokenNotFoundError",
+    "TokenRevokedError",
+    "TokenValidationError",
+    "TokenServiceError",
+]
 
 
 class InvalidGroupError(Exception):
@@ -40,20 +46,12 @@ class InvalidGroupError(Exception):
     pass
 
 
-class TokenNotFoundError(Exception):
-    """Raised when a token is not found in the store."""
-
-    pass
-
-
-class TokenRevokedError(Exception):
-    """Raised when a token has been revoked."""
-
-    pass
-
-
 class AuthService:
     """Service for JWT authentication and multi-group management.
+
+    This is the high-level authentication service that combines JWT
+    token operations with group validation. It delegates JWT operations
+    to TokenService internally.
 
     Features:
     - JWT token creation with configurable expiry
@@ -64,6 +62,8 @@ class AuthService:
     - Pluggable storage backends (memory, file, vault)
     - Optional device fingerprinting for token binding
     - Enhanced JWT claims (nbf, aud, jti)
+
+    For pure JWT operations without group validation, use TokenService directly.
 
     Example:
         from gofr_common.auth.backends import MemoryTokenStore, MemoryGroupStore
@@ -111,7 +111,6 @@ class AuthService:
             audience: Optional JWT audience claim for token validation.
         """
         self.env_prefix = env_prefix.upper().replace("-", "_")
-        self.audience = audience or f"{self.env_prefix.lower()}-api"
 
         # Setup logger - derive name from env_prefix (e.g., "GOFR_DIG" -> "gofr-dig-auth")
         if logger is not None:
@@ -121,16 +120,17 @@ class AuthService:
             logger_name = self.env_prefix.lower().replace("_", "-") + "-auth"
             self.logger = create_logger(name=logger_name)
 
-        # Get or create secret key
-        env_var = f"{self.env_prefix}_JWT_SECRET"
-        secret = secret_key or os.environ.get(env_var)
-        if not secret:
-            self.logger.warning(
-                "No JWT secret provided, generating random secret (not suitable for production)",
-                hint=f"Set {env_var} environment variable for persistent tokens",
-            )
-            secret = os.urandom(32).hex()
-        self.secret_key: str = secret
+        # Create internal TokenService for JWT operations
+        self._token_service = TokenService(
+            store=token_store,
+            secret_key=secret_key,
+            env_prefix=env_prefix,
+            audience=audience,
+        )
+
+        # Expose key properties from token service
+        self.secret_key = self._token_service.secret_key
+        self.audience = self._token_service.audience
 
         # Store references
         self._token_store = token_store
@@ -142,6 +142,17 @@ class AuthService:
             group_store_type=type(group_registry._store).__name__,
             secret_fingerprint=self._secret_fingerprint(),
         )
+
+    @property
+    def tokens(self) -> TokenService:
+        """Access the underlying TokenService.
+
+        Use this for direct JWT operations without group validation.
+
+        Returns:
+            The TokenService instance
+        """
+        return self._token_service
 
     @property
     def groups(self) -> GroupRegistry:

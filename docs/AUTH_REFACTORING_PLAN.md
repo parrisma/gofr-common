@@ -14,7 +14,9 @@
 
 ### 1. Global State in Middleware is an Anti-pattern 🔴 **HIGH PRIORITY**
 
-**Status:** ⬜ Not Started
+**Status:** ✅ Completed
+
+**Implementation:** Created `AuthProvider` class in `src/gofr_common/auth/provider.py` that provides dependency injection for FastAPI applications. The provider wraps an `AuthService` and exposes methods like `verify_token()`, `require_group()`, and `require_admin()` that return FastAPI dependencies.
 
 **Problem:** `_auth_service` and `_security_auditor` are module-level globals, making testing harder and preventing multiple auth contexts.
 
@@ -48,7 +50,9 @@ class AuthProvider:
 
 ### 2. Dual Responsibility: AuthService does too much 🟡 **MEDIUM PRIORITY**
 
-**Status:** ⬜ Not Started
+**Status:** ✅ Completed
+
+**Implementation:** Created `TokenService` class in `src/gofr_common/auth/token_service.py` that handles pure JWT operations (create, verify, revoke, list). `AuthService` now uses `TokenService` internally via `self._token_service` and exposes it through the `tokens` property. This maintains backward compatibility while establishing clean separation of concerns.
 
 **Problem:** `AuthService` handles both JWT operations AND orchestrates group registry. These are separate concerns.
 
