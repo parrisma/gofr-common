@@ -637,3 +637,137 @@ class TestModuleExports:
         assert callable(require_any_group)
         assert callable(require_all_groups)
         assert callable(require_admin)
+
+    def test_auth_provider_exports(self):
+        """Test AuthProvider exports."""
+        from gofr_common.auth import (
+            AuthProvider,
+            SecurityAuditorProtocol,
+            create_auth_provider,
+        )
+
+        assert AuthProvider is not None
+        assert SecurityAuditorProtocol is not None
+        assert callable(create_auth_provider)
+
+
+# ============================================================================
+# Test AuthProvider (Dependency Injection)
+# ============================================================================
+
+
+class TestAuthProvider:
+    """Tests for the AuthProvider dependency injection class."""
+
+    def test_provider_creation(self):
+        """Test creating an AuthProvider."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        assert provider.service is auth_service
+        assert provider.auditor is None
+
+    def test_provider_with_auditor(self):
+        """Test creating an AuthProvider with an auditor."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+
+        class MockAuditor:
+            def log_auth_failure(self, client_id, reason, endpoint=None, **details):
+                pass
+
+        auditor = MockAuditor()
+        provider = AuthProvider(auth_service, auditor=auditor)
+
+        assert provider.auditor is auditor
+
+    def test_provider_set_auditor(self):
+        """Test setting auditor after creation."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        class MockAuditor:
+            def log_auth_failure(self, client_id, reason, endpoint=None, **details):
+                pass
+
+        auditor = MockAuditor()
+        provider.set_auditor(auditor)
+        assert provider.auditor is auditor
+
+        provider.set_auditor(None)
+        assert provider.auditor is None
+
+    def test_provider_get_service(self):
+        """Test get_service dependency."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        # get_service returns the service
+        assert provider.get_service() is auth_service
+
+    def test_provider_require_group_returns_callable(self):
+        """Test require_group returns a callable."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        dependency = provider.require_group("admin")
+        assert callable(dependency)
+
+    def test_provider_require_any_group_returns_callable(self):
+        """Test require_any_group returns a callable."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        dependency = provider.require_any_group(["admin", "users"])
+        assert callable(dependency)
+
+    def test_provider_require_all_groups_returns_callable(self):
+        """Test require_all_groups returns a callable."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        dependency = provider.require_all_groups(["admin", "users"])
+        assert callable(dependency)
+
+    def test_provider_require_admin_returns_callable(self):
+        """Test require_admin returns a callable."""
+        from gofr_common.auth import AuthProvider
+
+        auth_service = create_memory_auth()
+        provider = AuthProvider(auth_service)
+
+        dependency = provider.require_admin
+        assert callable(dependency)
+
+    def test_create_auth_provider_with_service(self):
+        """Test create_auth_provider factory with existing service."""
+        from gofr_common.auth import create_auth_provider
+
+        auth_service = create_memory_auth()
+        provider = create_auth_provider(auth_service=auth_service)
+
+        assert provider.service is auth_service
+
+    def test_create_auth_provider_from_env(self):
+        """Test create_auth_provider factory from environment."""
+        from gofr_common.auth import create_auth_provider
+
+        with patch.dict(os.environ, {"GOFR_AUTH_BACKEND": "memory"}):
+            provider = create_auth_provider(secret_key="test-secret")
+
+            assert provider.service is not None
+            assert provider.service.secret_key == "test-secret"
+

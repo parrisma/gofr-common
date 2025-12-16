@@ -93,6 +93,7 @@ from .middleware import (
     verify_token,
     verify_token_simple,
 )
+from .provider import AuthProvider, SecurityAuditorProtocol, create_auth_provider
 from .service import AuthService, InvalidGroupError, TokenNotFoundError, TokenRevokedError
 from .tokens import TokenInfo, TokenRecord
 
@@ -102,6 +103,10 @@ __all__ = [
     "InvalidGroupError",
     "TokenNotFoundError",
     "TokenRevokedError",
+    # Provider (DI - recommended)
+    "AuthProvider",
+    "SecurityAuditorProtocol",
+    "create_auth_provider",
     # Tokens
     "TokenInfo",
     "TokenRecord",
@@ -113,7 +118,7 @@ __all__ = [
     "DuplicateGroupError",
     "GroupNotFoundError",
     "RESERVED_GROUPS",
-    # Middleware
+    # Middleware (global state - backward compatible)
     "get_auth_service",
     "verify_token",
     "verify_token_simple",
@@ -121,7 +126,7 @@ __all__ = [
     "init_auth_service",
     "set_security_auditor",
     "get_security_auditor",
-    # Authorization helpers
+    # Authorization helpers (global state)
     "require_group",
     "require_any_group",
     "require_all_groups",
