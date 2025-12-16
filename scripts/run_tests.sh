@@ -197,14 +197,54 @@ if [ "$SKIP_LINT" = false ]; then
     
     if [ $LINT_EXIT_CODE -ne 0 ]; then
         echo ""
-        echo -e "${RED}=== Code quality checks failed! ===${NC}"
+        echo -e "${RED}=== Ruff checks failed! ===${NC}"
         echo -e "${YELLOW}Fix issues with: ruff check src/ tests/ --fix${NC}"
         echo -e "${YELLOW}Or skip lint with: $0 --skip-lint${NC}"
         exit $LINT_EXIT_CODE
     fi
     
-    echo -e "${GREEN}Code quality checks passed!${NC}"
+    echo -e "${GREEN}Ruff checks passed!${NC}"
     echo ""
+    
+    # -------------------------------------------------------------------------
+    # PYRIGHT TYPE CHECKING (optional - requires Node.js)
+    # -------------------------------------------------------------------------
+    # Check if node is available (pyright requires it)
+    if command -v node &> /dev/null; then
+        echo -e "${BLUE}Running type checks (pyright)...${NC}"
+        
+        PYRIGHT_CMD="pyright src/"
+        
+        if [ "$USE_DOCKER" = true ]; then
+            docker exec "${CONTAINER_NAME}" bash -c "cd /home/${PROJECT_NAME} && source .venv/bin/activate && ${PYRIGHT_CMD}"
+            TYPE_EXIT_CODE=$?
+        else
+            if command -v pyright &> /dev/null; then
+                ${PYRIGHT_CMD}
+                TYPE_EXIT_CODE=$?
+            elif [ -f "${VENV_DIR}/bin/pyright" ]; then
+                ${VENV_DIR}/bin/pyright src/
+                TYPE_EXIT_CODE=$?
+            else
+                echo -e "${YELLOW}Warning: pyright not found, skipping type checks${NC}"
+                TYPE_EXIT_CODE=0
+            fi
+        fi
+        
+        if [ $TYPE_EXIT_CODE -ne 0 ]; then
+            echo ""
+            echo -e "${RED}=== Type checks failed! ===${NC}"
+            echo -e "${YELLOW}Or skip lint with: $0 --skip-lint${NC}"
+            exit $TYPE_EXIT_CODE
+        fi
+        
+        echo -e "${GREEN}Type checks passed!${NC}"
+        echo ""
+    else
+        echo -e "${YELLOW}Skipping pyright type checks (Node.js not available)${NC}"
+        echo -e "${YELLOW}Install Node.js to enable type checking${NC}"
+        echo ""
+    fi
 fi
 
 # =============================================================================
