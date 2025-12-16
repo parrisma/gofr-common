@@ -19,31 +19,26 @@ import jwt
 from gofr_common.logger import Logger, create_logger
 
 from .backends import TokenStore
+from .exceptions import (
+    FingerprintMismatchError,
+    TokenExpiredError,
+    TokenNotFoundError,
+    TokenRevokedError,
+    TokenServiceError,
+    TokenValidationError,
+)
 from .tokens import TokenInfo, TokenRecord
 
-
-class TokenServiceError(Exception):
-    """Base exception for token service errors."""
-
-    pass
-
-
-class TokenNotFoundError(TokenServiceError):
-    """Raised when a token is not found in the store."""
-
-    pass
-
-
-class TokenRevokedError(TokenServiceError):
-    """Raised when a token has been revoked."""
-
-    pass
-
-
-class TokenValidationError(TokenServiceError):
-    """Raised when token validation fails."""
-
-    pass
+# Re-export exceptions for backward compatibility
+__all__ = [
+    "TokenService",
+    "TokenServiceError",
+    "TokenNotFoundError",
+    "TokenRevokedError",
+    "TokenValidationError",
+    "TokenExpiredError",
+    "FingerprintMismatchError",
+]
 
 
 class TokenService:
@@ -261,7 +256,7 @@ class TokenService:
                         "Fingerprint mismatch",
                         token_id=token_id,
                     )
-                    raise TokenValidationError("Token fingerprint mismatch")
+                    raise FingerprintMismatchError()
 
             # Store validation
             if require_store:
@@ -287,7 +282,7 @@ class TokenService:
             )
 
         except jwt.ExpiredSignatureError:
-            raise TokenValidationError("Token expired")
+            raise TokenExpiredError()
         except jwt.ImmatureSignatureError:
             raise TokenValidationError("Token not yet valid")
         except jwt.InvalidTokenError as e:

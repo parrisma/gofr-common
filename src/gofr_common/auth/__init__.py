@@ -71,6 +71,20 @@ from .backends import (
     # Factory functions
     create_token_store,
 )
+from .exceptions import (
+    AuthenticationError,
+    AuthError,
+    FingerprintMismatchError,
+    GroupAccessDeniedError,
+    GroupError,
+    InvalidGroupError,
+    TokenError,
+    TokenExpiredError,
+    TokenNotFoundError,
+    TokenRevokedError,
+    TokenServiceError,
+    TokenValidationError,
+)
 from .groups import (
     RESERVED_GROUPS,
     DuplicateGroupError,
@@ -94,20 +108,15 @@ from .middleware import (
     verify_token_simple,
 )
 from .provider import AuthProvider, SecurityAuditorProtocol, create_auth_provider
-from .service import AuthService, InvalidGroupError, TokenNotFoundError, TokenRevokedError
-from .token_service import TokenService, TokenServiceError, TokenValidationError
+from .service import AuthService
+from .token_service import TokenService
 from .tokens import TokenInfo, TokenRecord
 
 __all__ = [
     # Service
     "AuthService",
-    "InvalidGroupError",
-    "TokenNotFoundError",
-    "TokenRevokedError",
     # Token Service (low-level JWT operations)
     "TokenService",
-    "TokenServiceError",
-    "TokenValidationError",
     # Provider (DI - recommended)
     "AuthProvider",
     "SecurityAuditorProtocol",
@@ -123,6 +132,19 @@ __all__ = [
     "DuplicateGroupError",
     "GroupNotFoundError",
     "RESERVED_GROUPS",
+    # Exception Hierarchy
+    "AuthError",
+    "TokenError",
+    "TokenNotFoundError",
+    "TokenRevokedError",
+    "TokenExpiredError",
+    "TokenValidationError",
+    "TokenServiceError",
+    "GroupError",
+    "InvalidGroupError",
+    "GroupAccessDeniedError",
+    "AuthenticationError",
+    "FingerprintMismatchError",
     # Middleware (global state - backward compatible)
     "get_auth_service",
     "verify_token",
@@ -164,4 +186,3 @@ __all__ = [
     "StorageUnavailableError",
     "FactoryError",
 ]
-

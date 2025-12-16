@@ -12,13 +12,16 @@ from gofr_common.auth import (
     AuthService,
     FileGroupStore,
     FileTokenStore,
+    FingerprintMismatchError,
     GroupRegistry,
     InvalidGroupError,
     MemoryGroupStore,
     MemoryTokenStore,
+    TokenExpiredError,
     TokenInfo,
     TokenNotFoundError,
     TokenRevokedError,
+    TokenValidationError,
 )
 
 
@@ -257,7 +260,7 @@ class TestTokenVerification:
         # Create token that expires in -1 seconds (already expired)
         token = auth.create_token(groups=["admin"], expires_in_seconds=-1)
 
-        with pytest.raises(ValueError, match="expired"):
+        with pytest.raises(TokenExpiredError):
             auth.verify_token(token)
 
     def test_verify_token_not_in_store(self):
@@ -295,7 +298,7 @@ class TestTokenVerification:
         }
         token = jwt.encode(payload, "wrong-secret", algorithm="HS256")
 
-        with pytest.raises(ValueError, match="Invalid token"):
+        with pytest.raises(TokenValidationError, match="Invalid token"):
             auth.verify_token(token)
 
     def test_verify_token_fingerprint_mismatch(self):
@@ -307,7 +310,7 @@ class TestTokenVerification:
             fingerprint="original-fingerprint",
         )
 
-        with pytest.raises(ValueError, match="fingerprint mismatch"):
+        with pytest.raises(FingerprintMismatchError):
             auth.verify_token(token, fingerprint="different-fingerprint")
 
     def test_verify_token_stateless(self):
@@ -465,7 +468,7 @@ class TestResolveTokenGroups:
         """Test resolving groups for an invalid token."""
         auth = create_memory_auth()
 
-        with pytest.raises(ValueError):
+        with pytest.raises(TokenValidationError):
             auth.resolve_token_groups("invalid-token")
 
 
@@ -649,6 +652,190 @@ class TestModuleExports:
         assert AuthProvider is not None
         assert SecurityAuditorProtocol is not None
         assert callable(create_auth_provider)
+
+    def test_exception_hierarchy_exports(self):
+        """Test exception hierarchy exports."""
+        from gofr_common.auth import (
+            AuthenticationError,
+            AuthError,
+            FingerprintMismatchError,
+            GroupAccessDeniedError,
+            GroupError,
+            InvalidGroupError,
+            TokenError,
+            TokenExpiredError,
+            TokenNotFoundError,
+            TokenRevokedError,
+            TokenServiceError,
+            TokenValidationError,
+        )
+
+        # All exceptions should be exported
+        assert AuthError is not None
+        assert TokenError is not None
+        assert TokenNotFoundError is not None
+        assert TokenRevokedError is not None
+        assert TokenExpiredError is not None
+        assert TokenValidationError is not None
+        assert TokenServiceError is not None
+        assert GroupError is not None
+        assert InvalidGroupError is not None
+        assert GroupAccessDeniedError is not None
+        assert AuthenticationError is not None
+        assert FingerprintMismatchError is not None
+
+
+# ============================================================================
+# Test Exception Hierarchy
+# ============================================================================
+
+
+class TestExceptionHierarchy:
+    """Tests for the auth exception hierarchy."""
+
+    def test_auth_error_is_base(self):
+        """Test that AuthError is the base exception."""
+        from gofr_common.auth import (
+            AuthenticationError,
+            AuthError,
+            GroupError,
+            TokenError,
+        )
+
+        # All main exception types should inherit from AuthError
+        assert issubclass(TokenError, AuthError)
+        assert issubclass(GroupError, AuthError)
+        assert issubclass(AuthenticationError, AuthError)
+
+    def test_token_errors_inherit_from_token_error(self):
+        """Test that token exceptions inherit from TokenError."""
+        from gofr_common.auth import (
+            TokenError,
+            TokenExpiredError,
+            TokenNotFoundError,
+            TokenRevokedError,
+            TokenServiceError,
+            TokenValidationError,
+        )
+
+        assert issubclass(TokenNotFoundError, TokenError)
+        assert issubclass(TokenRevokedError, TokenError)
+        assert issubclass(TokenExpiredError, TokenError)
+        assert issubclass(TokenValidationError, TokenError)
+        assert issubclass(TokenServiceError, TokenError)
+
+    def test_group_errors_inherit_from_group_error(self):
+        """Test that group exceptions inherit from GroupError."""
+        from gofr_common.auth import (
+            GroupAccessDeniedError,
+            GroupError,
+            InvalidGroupError,
+        )
+
+        assert issubclass(InvalidGroupError, GroupError)
+        assert issubclass(GroupAccessDeniedError, GroupError)
+
+    def test_fingerprint_error_inherits_from_auth_error(self):
+        """Test that FingerprintMismatchError inherits from AuthenticationError."""
+        from gofr_common.auth import (
+            AuthenticationError,
+            FingerprintMismatchError,
+        )
+
+        assert issubclass(FingerprintMismatchError, AuthenticationError)
+
+    def test_exception_status_codes(self):
+        """Test that exceptions have correct HTTP status codes."""
+        from gofr_common.auth import (
+            AuthError,
+            FingerprintMismatchError,
+            GroupAccessDeniedError,
+            GroupError,
+            InvalidGroupError,
+            TokenError,
+            TokenExpiredError,
+            TokenNotFoundError,
+            TokenRevokedError,
+            TokenValidationError,
+        )
+
+        # Token errors should be 401
+        assert TokenError.status_code == 401
+        assert TokenNotFoundError.status_code == 401
+        assert TokenRevokedError.status_code == 401
+        assert TokenExpiredError.status_code == 401
+        assert TokenValidationError.status_code == 401
+
+        # Group errors should be 403
+        assert GroupError.status_code == 403
+        assert InvalidGroupError.status_code == 403
+        assert GroupAccessDeniedError.status_code == 403
+
+        # Auth error base is 401
+        assert AuthError.status_code == 401
+        assert FingerprintMismatchError.status_code == 401
+
+    def test_exception_default_messages(self):
+        """Test that exceptions have default messages."""
+        from gofr_common.auth import (
+            FingerprintMismatchError,
+            GroupAccessDeniedError,
+            InvalidGroupError,
+            TokenExpiredError,
+            TokenNotFoundError,
+            TokenRevokedError,
+            TokenValidationError,
+        )
+
+        # Test default messages
+        assert str(TokenNotFoundError()) == "Token not found in store"
+        assert str(TokenRevokedError()) == "Token has been revoked"
+        assert str(TokenExpiredError()) == "Token has expired"
+        assert str(TokenValidationError()) == "Token validation failed"
+        assert str(InvalidGroupError()) == "Invalid or defunct group"
+        assert str(GroupAccessDeniedError()) == "Group access denied"
+        assert str(FingerprintMismatchError()) == "Token fingerprint mismatch - possible token theft"
+
+    def test_exception_custom_messages(self):
+        """Test that exceptions can have custom messages."""
+        from gofr_common.auth import (
+            GroupAccessDeniedError,
+            TokenNotFoundError,
+        )
+
+        # Test custom messages
+        error = TokenNotFoundError("Custom message")
+        assert str(error) == "Custom message"
+
+        error = GroupAccessDeniedError("Access denied to admin group")
+        assert str(error) == "Access denied to admin group"
+
+    def test_all_token_exceptions_caught_by_auth_error(self):
+        """Test that all token exceptions can be caught by AuthError."""
+        from gofr_common.auth import (
+            AuthError,
+            TokenExpiredError,
+            TokenNotFoundError,
+            TokenRevokedError,
+            TokenValidationError,
+        )
+
+        def raise_token_expired():
+            raise TokenExpiredError()
+
+        def raise_token_not_found():
+            raise TokenNotFoundError()
+
+        def raise_token_revoked():
+            raise TokenRevokedError()
+
+        def raise_token_validation():
+            raise TokenValidationError()
+
+        # All should be catchable with AuthError
+        for func in [raise_token_expired, raise_token_not_found, raise_token_revoked, raise_token_validation]:
+            with pytest.raises(AuthError):
+                func()
 
 
 # ============================================================================
@@ -858,7 +1045,7 @@ class TestTokenService:
 
     def test_token_service_fingerprint(self):
         """Test token with fingerprint."""
-        from gofr_common.auth import MemoryTokenStore, TokenService, TokenValidationError
+        from gofr_common.auth import FingerprintMismatchError, MemoryTokenStore, TokenService
 
         store = MemoryTokenStore()
         service = TokenService(store=store, secret_key="test-secret")
@@ -870,7 +1057,7 @@ class TestTokenService:
         assert info.groups == ["admin"]
 
         # Verify with mismatched fingerprint
-        with pytest.raises(TokenValidationError, match="fingerprint"):
+        with pytest.raises(FingerprintMismatchError):
             service.verify(token, fingerprint="wrong-device")
 
     def test_token_service_extra_claims(self):

@@ -19,14 +19,17 @@ import jwt
 from gofr_common.logger import Logger, create_logger
 
 from .backends import TokenStore
-from .groups import Group, GroupRegistry
-from .token_service import (
+from .exceptions import (
+    FingerprintMismatchError,
+    InvalidGroupError,
+    TokenExpiredError,
     TokenNotFoundError,
     TokenRevokedError,
-    TokenService,
     TokenServiceError,
     TokenValidationError,
 )
+from .groups import Group, GroupRegistry
+from .token_service import TokenService
 from .tokens import TokenInfo, TokenRecord
 
 # Re-export for backward compatibility
@@ -37,13 +40,10 @@ __all__ = [
     "TokenRevokedError",
     "TokenValidationError",
     "TokenServiceError",
+    "TokenExpiredError",
+    "FingerprintMismatchError",
 ]
 
-
-class InvalidGroupError(Exception):
-    """Raised when token references an invalid or defunct group."""
-
-    pass
 
 
 class AuthService:
@@ -284,18 +284,18 @@ class AuthService:
             token_id = payload.get("jti")
             if not token_id:
                 self.logger.error("Token missing jti claim")
-                raise ValueError("Token missing jti claim")
+                raise TokenValidationError("Token missing jti claim")
 
             # Get groups from payload
             groups = payload.get("groups")
             if not groups:
                 self.logger.error("Token missing groups claim")
-                raise ValueError("Token missing groups claim")
+                raise TokenValidationError("Token missing groups claim")
 
             # Validate audience if present (optional for backward compatibility)
             if "aud" in payload and payload["aud"] != self.audience:
                 self.logger.error("Token audience mismatch", aud=payload["aud"])
-                raise ValueError("Token audience mismatch")
+                raise TokenValidationError("Token audience mismatch")
 
             # Validate fingerprint if token has one and fingerprint provided
             if "fp" in payload:
@@ -307,7 +307,7 @@ class AuthService:
                         expected=stored_fp[:12] if stored_fp else None,
                         actual=fingerprint[:12] if fingerprint else None,
                     )
-                    raise ValueError("Token fingerprint mismatch - possible token theft")
+                    raise FingerprintMismatchError()
 
             # Check if token is in our store (if required)
             if require_store:
@@ -332,7 +332,7 @@ class AuthService:
                         stored_groups=token_record.groups,
                         token_groups=groups,
                     )
-                    raise ValueError("Token groups mismatch in store")
+                    raise TokenValidationError("Token groups mismatch in store")
 
             issued_at = datetime.fromtimestamp(payload["iat"])
             expires_at = datetime.fromtimestamp(payload["exp"])
@@ -353,13 +353,13 @@ class AuthService:
 
         except jwt.ExpiredSignatureError:
             self.logger.warning("Token expired")
-            raise ValueError("Token has expired")
+            raise TokenExpiredError()
         except jwt.ImmatureSignatureError:
             self.logger.warning("Token not yet valid (nbf)")
-            raise ValueError("Token not yet valid")
+            raise TokenValidationError("Token not yet valid")
         except jwt.InvalidTokenError as e:
             self.logger.error("Invalid token", error=str(e))
-            raise ValueError(f"Invalid token: {str(e)}")
+            raise TokenValidationError(f"Invalid token: {str(e)}")
 
     def revoke_token(self, token: str) -> bool:
         """Revoke a token by setting its status to "revoked".

@@ -102,7 +102,18 @@ def verify_token(self, token: str, ...) -> TokenInfo:
 
 ### 4. Error Types are Inconsistent 🟡 **MEDIUM PRIORITY**
 
-**Status:** ⬜ Not Started
+**Status:** ✅ Completed
+
+**Implementation:** Created `src/gofr_common/auth/exceptions.py` with a consistent exception hierarchy:
+- `AuthError` (401) - Base exception with HTTP status code
+  - `TokenError` (401) - Token-related errors
+    - `TokenNotFoundError`, `TokenRevokedError`, `TokenExpiredError`, `TokenValidationError`, `TokenServiceError`
+  - `GroupError` (403) - Group access errors
+    - `InvalidGroupError`, `GroupAccessDeniedError`
+  - `AuthenticationError` (401)
+    - `FingerprintMismatchError`
+
+Middleware now catches `AuthError` and uses `error.status_code` for HTTP responses, eliminating the need for hardcoded status codes.
 
 **Problem:** Mix of `ValueError`, custom exceptions, and HTTP exceptions across layers.
 
