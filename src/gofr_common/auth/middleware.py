@@ -61,35 +61,42 @@ def _generate_fingerprint(request: Request) -> str:
 
 
 def init_auth_service(
-    secret_key: Optional[str] = None,
-    token_store_path: Optional[str] = None,
-    env_prefix: str = "GOFR",
     auth_service: Optional[AuthService] = None,
+    secret_key: Optional[str] = None,
 ) -> AuthService:
     """Initialize the global auth service.
 
-    Supports two initialization patterns:
-    1. Dependency Injection: Pass an existing AuthService instance
-    2. Create new: Provide secret_key and token_store_path
-
     Args:
-        secret_key: JWT secret key (ignored if auth_service provided)
-        token_store_path: Path to token store (ignored if auth_service provided)
-        env_prefix: Environment variable prefix (ignored if auth_service provided)
-        auth_service: Existing AuthService instance (preferred)
+        auth_service: Existing AuthService instance (preferred).
+            If not provided, creates one using create_stores_from_env().
+        secret_key: JWT secret key (only used if auth_service not provided).
+            Defaults to GOFR_JWT_SECRET environment variable.
 
     Returns:
         AuthService instance
+
+    Example:
+        # Option 1: Pass existing service (recommended)
+        auth = AuthService(token_store=..., group_registry=..., secret_key=...)
+        init_auth_service(auth_service=auth)
+
+        # Option 2: Create from environment
+        init_auth_service(secret_key="your-secret")
     """
     global _auth_service
 
     if auth_service is not None:
         _auth_service = auth_service
     else:
+        from .backends import create_stores_from_env
+        from .groups import GroupRegistry
+
+        token_store, group_store = create_stores_from_env()
+        groups = GroupRegistry(store=group_store)
         _auth_service = AuthService(
+            token_store=token_store,
+            group_registry=groups,
             secret_key=secret_key,
-            token_store_path=token_store_path,
-            env_prefix=env_prefix,
         )
 
     return _auth_service
