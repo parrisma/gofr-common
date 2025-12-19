@@ -126,7 +126,7 @@ class TestAuthServiceInit:
         auth = create_memory_auth()
 
         # Token store is a MemoryTokenStore, check it's empty
-        assert len(auth._token_store) == 0
+        assert len(auth._token_store.list_all()) == 0
 
     def test_init_creates_group_registry(self):
         """Test that AuthService has a GroupRegistry."""
@@ -163,7 +163,7 @@ class TestTokenCreation:
         assert token is not None
         assert len(token) > 0
         # Token store is now keyed by UUID, not JWT
-        assert len(auth._token_store) == 1
+        assert len(auth._token_store.list_all()) == 1
         record = list(auth._token_store.list_all().values())[0]
         assert record.groups == ["admin"]
 
@@ -186,11 +186,12 @@ class TestTokenCreation:
         auth.create_token(groups=["public"], expires_in_seconds=3600)
 
         # Verify token is stored
-        assert len(auth._token_store) == 1
+        assert len(auth._token_store.list_all()) == 1
 
         # Verify expiry is approximately 1 hour from now
         record = list(auth._token_store.list_all().values())[0]
         now = datetime.utcnow()
+        assert record.expires_at is not None
         diff = (record.expires_at - now).total_seconds()
         assert 3590 < diff < 3610  # Within 10 seconds of expected
 
@@ -271,6 +272,7 @@ class TestTokenVerification:
         from uuid import uuid4
 
         import jwt
+
         payload = {
             "jti": str(uuid4()),
             "groups": ["admin"],
@@ -290,6 +292,7 @@ class TestTokenVerification:
         from uuid import uuid4
 
         import jwt
+
         payload = {
             "jti": str(uuid4()),
             "groups": ["admin"],
@@ -321,6 +324,7 @@ class TestTokenVerification:
         from uuid import uuid4
 
         import jwt
+
         payload = {
             "jti": str(uuid4()),
             "groups": ["admin"],
@@ -347,13 +351,13 @@ class TestTokenRevocation:
         auth = create_memory_auth()
 
         token = auth.create_token(groups=["admin"])
-        assert len(auth._token_store) == 1
+        assert len(auth._token_store.list_all()) == 1
 
         result = auth.revoke_token(token)
 
         assert result is True
         # Token is still in store but marked as revoked
-        assert len(auth._token_store) == 1
+        assert len(auth._token_store.list_all()) == 1
         record = list(auth._token_store.list_all().values())[0]
         assert record.status == "revoked"
         assert record.revoked_at is not None
@@ -376,6 +380,7 @@ class TestTokenRevocation:
         from uuid import uuid4
 
         import jwt
+
         payload = {
             "jti": str(uuid4()),
             "groups": ["admin"],
@@ -794,7 +799,9 @@ class TestExceptionHierarchy:
         assert str(TokenValidationError()) == "Token validation failed"
         assert str(InvalidGroupError()) == "Invalid or defunct group"
         assert str(GroupAccessDeniedError()) == "Group access denied"
-        assert str(FingerprintMismatchError()) == "Token fingerprint mismatch - possible token theft"
+        assert (
+            str(FingerprintMismatchError()) == "Token fingerprint mismatch - possible token theft"
+        )
 
     def test_exception_custom_messages(self):
         """Test that exceptions can have custom messages."""
@@ -833,7 +840,12 @@ class TestExceptionHierarchy:
             raise TokenValidationError()
 
         # All should be catchable with AuthError
-        for func in [raise_token_expired, raise_token_not_found, raise_token_revoked, raise_token_validation]:
+        for func in [
+            raise_token_expired,
+            raise_token_not_found,
+            raise_token_revoked,
+            raise_token_validation,
+        ]:
             with pytest.raises(AuthError):
                 func()
 

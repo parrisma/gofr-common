@@ -350,6 +350,7 @@ class TestGroupRegistryInMemory:
         """Test that making reserved group defunct raises error."""
         registry = GroupRegistry(store=MemoryGroupStore())
         public = registry.get_group_by_name("public")
+        assert public is not None
 
         with pytest.raises(ReservedGroupError) as exc_info:
             registry.make_defunct(public.id)
@@ -360,6 +361,7 @@ class TestGroupRegistryInMemory:
         """Test that making admin group defunct raises error."""
         registry = GroupRegistry(store=MemoryGroupStore())
         admin = registry.get_group_by_name("admin")
+        assert admin is not None
 
         with pytest.raises(ReservedGroupError):
             registry.make_defunct(admin.id)
@@ -468,7 +470,9 @@ class TestGroupRegistryFileBased:
         store_path = tmp_path / "groups.json"
 
         registry = GroupRegistry(store=FileGroupStore(str(store_path)))
-        public_id = registry.get_group_by_name("public").id
+        public_group = registry.get_group_by_name("public")
+        assert public_group is not None
+        public_id = public_group.id
 
         # Call again
         registry.ensure_reserved_groups()

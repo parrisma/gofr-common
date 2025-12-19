@@ -334,7 +334,10 @@ class TestLoggerFactoryFunctions:
         # Test with gofr-dig style name
         with mock.patch.dict(os.environ, {"GOFR_DIG_LOG_LEVEL": "DEBUG"}):
             logger = get_logger("gofr-dig")
-            assert logger._logger.level == logging.DEBUG
+            # Access internal logger via getattr for testing
+            internal_logger = getattr(logger, "_logger", None)
+            assert internal_logger is not None
+            assert internal_logger.level == logging.DEBUG
 
     def test_default_level_is_info(self, capsys):
         """Test that default log level is INFO."""

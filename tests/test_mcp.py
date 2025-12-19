@@ -9,6 +9,7 @@ Tests cover:
 """
 
 import json
+from typing import Sequence
 from unittest.mock import MagicMock
 
 from mcp.types import TextContent
@@ -21,6 +22,13 @@ from gofr_common.mcp import (
     json_text,
     success_response,
 )
+
+
+def get_text(content: Sequence) -> str:
+    """Helper to extract text from MCP content, with type assertion."""
+    item = content[0]
+    assert isinstance(item, TextContent), f"Expected TextContent, got {type(item)}"
+    return item.text
 
 
 class TestJsonText:
@@ -104,7 +112,7 @@ class TestSuccessResponse:
         assert len(result) == 1
         assert isinstance(result[0], TextContent)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["status"] == "success"
         assert parsed["data"]["result"] == "ok"
 
@@ -112,7 +120,7 @@ class TestSuccessResponse:
         """Test success response with message."""
         result = success_response({"count": 5}, message="Found 5 items")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["status"] == "success"
         assert parsed["message"] == "Found 5 items"
         assert parsed["data"]["count"] == 5
@@ -121,24 +129,24 @@ class TestSuccessResponse:
         """Test success response has no message key when not provided."""
         result = success_response("simple data")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert "message" not in parsed
 
     def test_success_with_various_data_types(self):
         """Test success with different data types."""
         # List
         result = success_response([1, 2, 3])
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["data"] == [1, 2, 3]
 
         # String
         result = success_response("text data")
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["data"] == "text data"
 
         # None
         result = success_response(None)
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["data"] is None
 
 
@@ -150,7 +158,7 @@ class TestErrorResponse:
         result = error_response("TEST_ERROR", "Something went wrong")
 
         assert len(result) == 1
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
 
         assert parsed["status"] == "error"
         assert parsed["error_code"] == "TEST_ERROR"
@@ -164,7 +172,7 @@ class TestErrorResponse:
             recovery_strategy="Check the URL format",
         )
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["recovery_strategy"] == "Check the URL format"
 
     def test_error_with_details(self):
@@ -175,7 +183,7 @@ class TestErrorResponse:
             details={"resource_id": "abc123", "type": "template"},
         )
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["details"]["resource_id"] == "abc123"
         assert parsed["details"]["type"] == "template"
 
@@ -183,7 +191,7 @@ class TestErrorResponse:
         """Test error response doesn't include optional fields when not provided."""
         result = error_response("ERROR", "Message")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert "recovery_strategy" not in parsed
         assert "details" not in parsed
 
@@ -199,7 +207,7 @@ class TestFormatValidationError:
         ]
         result = format_validation_error(errors)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "VALIDATION_ERROR"
         assert "name" in parsed["message"]
         assert "value" in parsed["message"]
@@ -212,7 +220,7 @@ class TestFormatValidationError:
         ]
         result = format_validation_error(errors)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "VALIDATION_ERROR"
         assert "validation failed" in parsed["message"].lower()
 
@@ -221,7 +229,7 @@ class TestFormatValidationError:
         errors = [{"type": "missing", "loc": ("field",), "msg": "required"}]
         result = format_validation_error(errors, context="Creating document session")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["details"]["context"] == "Creating document session"
 
     def test_errors_in_details(self):
@@ -229,7 +237,7 @@ class TestFormatValidationError:
         errors = [{"type": "missing", "loc": ("x",), "msg": "required"}]
         result = format_validation_error(errors)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert "validation_errors" in parsed["details"]
         assert len(parsed["details"]["validation_errors"]) == 1
 
@@ -275,7 +283,7 @@ class TestMCPResponseBuilder:
         builder = MCPResponseBuilder()
         result = builder.success({"data": "value"}, "Operation completed")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["status"] == "success"
         assert parsed["data"]["data"] == "value"
         assert parsed["message"] == "Operation completed"
@@ -285,7 +293,7 @@ class TestMCPResponseBuilder:
         builder = MCPResponseBuilder()
         result = builder.error("AUTH_REQUIRED", "No token provided")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "AUTH_REQUIRED"
         assert "recovery_strategy" in parsed
         assert "JWT" in parsed["recovery_strategy"] or "token" in parsed["recovery_strategy"].lower()
@@ -299,7 +307,7 @@ class TestMCPResponseBuilder:
             recovery_strategy="Custom recovery instruction",
         )
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["recovery_strategy"] == "Custom recovery instruction"
 
     def test_error_method_with_details(self):
@@ -311,7 +319,7 @@ class TestMCPResponseBuilder:
             details={"template_id": "header"},
         )
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["details"]["template_id"] == "header"
 
     def test_from_exception_gofr_error(self):
@@ -320,7 +328,7 @@ class TestMCPResponseBuilder:
         exc = GofrError("CUSTOM_CODE", "Error message", {"key": "val"})
         result = builder.from_exception(exc)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "CUSTOM_CODE"
         assert parsed["message"] == "Error message"
         assert parsed["details"]["key"] == "val"
@@ -331,7 +339,7 @@ class TestMCPResponseBuilder:
         exc = ValidationError("VAL_ERR", "Invalid input", {"field": "name"})
         result = builder.from_exception(exc)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "VAL_ERR"
         assert parsed["message"] == "Invalid input"
 
@@ -341,7 +349,7 @@ class TestMCPResponseBuilder:
         exc = GofrError("ORIGINAL", "Message")
         result = builder.from_exception(exc, error_code="OVERRIDDEN")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "OVERRIDDEN"
 
     def test_from_exception_generic(self):
@@ -350,7 +358,7 @@ class TestMCPResponseBuilder:
         exc = ValueError("Something failed")
         result = builder.from_exception(exc)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "INTERNAL_ERROR"
         assert "Something failed" in parsed["message"]
 
@@ -360,7 +368,7 @@ class TestMCPResponseBuilder:
         exc = GofrError("CODE", "Message", {"existing": "value"})
         result = builder.from_exception(exc, details={"additional": "info"})
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["details"]["existing"] == "value"
         assert parsed["details"]["additional"] == "info"
 
@@ -370,7 +378,7 @@ class TestMCPResponseBuilder:
         errors = [{"type": "missing", "loc": ("field",), "msg": "required"}]
         result = builder.validation_error(errors, context="Test context")
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "VALIDATION_ERROR"
         assert parsed["details"]["context"] == "Test context"
 
@@ -402,7 +410,7 @@ class TestIntegration:
             {"rendered": "<html>...</html>"},
             "Document rendered successfully",
         )
-        success_parsed = json.loads(success[0].text)
+        success_parsed = json.loads(get_text(success))
         assert success_parsed["status"] == "success"
 
         # Simulate error case
@@ -411,7 +419,7 @@ class TestIntegration:
             "Template 'header' not found",
             details={"template_id": "header"},
         )
-        error_parsed = json.loads(error[0].text)
+        error_parsed = json.loads(get_text(error))
         assert error_parsed["status"] == "error"
         assert error_parsed["recovery_strategy"] == "Check template exists"
 
@@ -429,6 +437,6 @@ class TestIntegration:
         except Exception as e:
             result = builder.from_exception(e)
 
-        parsed = json.loads(result[0].text)
+        parsed = json.loads(get_text(result))
         assert parsed["error_code"] == "INVALID_FORMAT"
         assert parsed["details"]["field"] == "date"

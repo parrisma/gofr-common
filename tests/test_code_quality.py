@@ -176,6 +176,7 @@ class TestRuffCheck:
 
             assert result.success is True  # Not a failure, just skipped
             assert result.return_code == -1
+            assert result.error_message is not None
             assert "not found" in result.error_message.lower()
 
     def test_ruff_check_no_dirs_exist(self, tmp_path: Path):
@@ -244,6 +245,7 @@ class TestPyrightCheck:
 
             assert result.success is True
             assert result.return_code == -1
+            assert result.error_message is not None
             assert "not found" in result.error_message.lower()
 
 
@@ -282,6 +284,7 @@ class TestSyntaxCheck:
 
         assert result.success is False
         assert result.return_code == 1
+        assert result.error_message is not None
         assert "broken.py" in result.error_message
 
     def test_syntax_check_empty_dir(self, tmp_path: Path):

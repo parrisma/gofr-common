@@ -104,7 +104,7 @@ class TestAuthSettings:
         """Test that string paths are converted to Path"""
         settings = AuthSettings(
             require_auth=False,
-            token_store_path="/tmp/tokens.json",
+            token_store_path=Path("/tmp/tokens.json"),
         )
         assert isinstance(settings.token_store_path, Path)
         assert settings.token_store_path == Path("/tmp/tokens.json")
@@ -170,10 +170,10 @@ class TestStorageSettings:
             )
             settings.ensure_directories()
 
-            assert settings.data_dir.exists()
-            assert settings.storage_dir.exists()
-            assert settings.auth_dir.exists()
-            assert settings.sessions_dir.exists()
+            assert settings.data_dir is not None and settings.data_dir.exists()
+            assert settings.storage_dir is not None and settings.storage_dir.exists()
+            assert settings.auth_dir is not None and settings.auth_dir.exists()
+            assert settings.sessions_dir is not None and settings.sessions_dir.exists()
 
     def test_get_token_store_path(self):
         """Test token store path resolution"""

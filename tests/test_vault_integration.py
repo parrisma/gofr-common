@@ -65,7 +65,7 @@ def unique_prefix() -> str:
 
 
 @pytest.fixture
-def token_store(vault_client: VaultClient, unique_prefix: str) -> VaultTokenStore:
+def token_store(vault_client: VaultClient, unique_prefix: str):
     """Create a VaultTokenStore with unique prefix."""
     store = VaultTokenStore(vault_client, path_prefix=unique_prefix)
     yield store
@@ -77,7 +77,7 @@ def token_store(vault_client: VaultClient, unique_prefix: str) -> VaultTokenStor
 
 
 @pytest.fixture
-def group_store(vault_client: VaultClient, unique_prefix: str) -> VaultGroupStore:
+def group_store(vault_client: VaultClient, unique_prefix: str):
     """Create a VaultGroupStore with unique prefix."""
     store = VaultGroupStore(vault_client, path_prefix=unique_prefix)
     yield store
