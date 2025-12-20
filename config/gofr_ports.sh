@@ -62,30 +62,133 @@ export GOFR_CHROMA_PORT="${GOFR_CHROMA_PORT:-8000}"
 export GOFR_NEO4J_HTTP_PORT="${GOFR_NEO4J_HTTP_PORT:-7474}"
 export GOFR_NEO4J_BOLT_PORT="${GOFR_NEO4J_BOLT_PORT:-7687}"
 
+# =============================================================================
+# Test Ports (Production Port + 100)
+# =============================================================================
+# Test ports are offset by 100 from production to avoid conflicts.
+# Use gofr_set_test_ports to switch to test mode.
+
+# GOFR-DOC Test ports
+export GOFR_DOC_MCP_PORT_TEST="${GOFR_DOC_MCP_PORT_TEST:-8140}"
+export GOFR_DOC_MCPO_PORT_TEST="${GOFR_DOC_MCPO_PORT_TEST:-8141}"
+export GOFR_DOC_WEB_PORT_TEST="${GOFR_DOC_WEB_PORT_TEST:-8142}"
+
+# GOFR-PLOT Test ports
+export GOFR_PLOT_MCP_PORT_TEST="${GOFR_PLOT_MCP_PORT_TEST:-8150}"
+export GOFR_PLOT_MCPO_PORT_TEST="${GOFR_PLOT_MCPO_PORT_TEST:-8151}"
+export GOFR_PLOT_WEB_PORT_TEST="${GOFR_PLOT_WEB_PORT_TEST:-8152}"
+
+# GOFR-NP Test ports
+export GOFR_NP_MCP_PORT_TEST="${GOFR_NP_MCP_PORT_TEST:-8160}"
+export GOFR_NP_MCPO_PORT_TEST="${GOFR_NP_MCPO_PORT_TEST:-8161}"
+export GOFR_NP_WEB_PORT_TEST="${GOFR_NP_WEB_PORT_TEST:-8162}"
+
+# GOFR-DIG Test ports
+export GOFR_DIG_MCP_PORT_TEST="${GOFR_DIG_MCP_PORT_TEST:-8170}"
+export GOFR_DIG_MCPO_PORT_TEST="${GOFR_DIG_MCPO_PORT_TEST:-8171}"
+export GOFR_DIG_WEB_PORT_TEST="${GOFR_DIG_WEB_PORT_TEST:-8172}"
+
+# GOFR-IQ Test ports
+export GOFR_IQ_MCP_PORT_TEST="${GOFR_IQ_MCP_PORT_TEST:-8180}"
+export GOFR_IQ_MCPO_PORT_TEST="${GOFR_IQ_MCPO_PORT_TEST:-8181}"
+export GOFR_IQ_WEB_PORT_TEST="${GOFR_IQ_WEB_PORT_TEST:-8182}"
+
+# Infrastructure Test ports
+export GOFR_VAULT_PORT_TEST="${GOFR_VAULT_PORT_TEST:-8301}"
+export GOFR_CHROMA_PORT_TEST="${GOFR_CHROMA_PORT_TEST:-8100}"
+export GOFR_NEO4J_HTTP_PORT_TEST="${GOFR_NEO4J_HTTP_PORT_TEST:-7574}"
+export GOFR_NEO4J_BOLT_PORT_TEST="${GOFR_NEO4J_BOLT_PORT_TEST:-7787}"
+
 # Reserved ports for future services:
-# 8090-8092: Reserved
-# 8100-8102: Reserved  
-# 8110-8112: Reserved
-# etc.
+# 8090-8092: Reserved (prod)
+# 8190-8192: Reserved (test)
 
 # Helper function to display all port assignments
 gofr_ports_list() {
     echo "GOFR Service Port Assignments"
     echo "=============================="
     echo ""
-    echo "MCP Services:"
+    echo "MCP Services (Production):"
     echo "  gofr-doc:  MCP=${GOFR_DOC_MCP_PORT}  MCPO=${GOFR_DOC_MCPO_PORT}  Web=${GOFR_DOC_WEB_PORT}"
     echo "  gofr-plot: MCP=${GOFR_PLOT_MCP_PORT} MCPO=${GOFR_PLOT_MCPO_PORT} Web=${GOFR_PLOT_WEB_PORT}"
     echo "  gofr-np:   MCP=${GOFR_NP_MCP_PORT}   MCPO=${GOFR_NP_MCPO_PORT}   Web=${GOFR_NP_WEB_PORT}"
     echo "  gofr-dig:  MCP=${GOFR_DIG_MCP_PORT}  MCPO=${GOFR_DIG_MCPO_PORT}  Web=${GOFR_DIG_WEB_PORT}"
     echo "  gofr-iq:   MCP=${GOFR_IQ_MCP_PORT}   MCPO=${GOFR_IQ_MCPO_PORT}   Web=${GOFR_IQ_WEB_PORT}"
     echo ""
-    echo "Infrastructure:"
+    echo "MCP Services (Test - prod + 100):"
+    echo "  gofr-doc:  MCP=${GOFR_DOC_MCP_PORT_TEST}  MCPO=${GOFR_DOC_MCPO_PORT_TEST}  Web=${GOFR_DOC_WEB_PORT_TEST}"
+    echo "  gofr-plot: MCP=${GOFR_PLOT_MCP_PORT_TEST} MCPO=${GOFR_PLOT_MCPO_PORT_TEST} Web=${GOFR_PLOT_WEB_PORT_TEST}"
+    echo "  gofr-np:   MCP=${GOFR_NP_MCP_PORT_TEST}   MCPO=${GOFR_NP_MCPO_PORT_TEST}   Web=${GOFR_NP_WEB_PORT_TEST}"
+    echo "  gofr-dig:  MCP=${GOFR_DIG_MCP_PORT_TEST}  MCPO=${GOFR_DIG_MCPO_PORT_TEST}  Web=${GOFR_DIG_WEB_PORT_TEST}"
+    echo "  gofr-iq:   MCP=${GOFR_IQ_MCP_PORT_TEST}   MCPO=${GOFR_IQ_MCPO_PORT_TEST}   Web=${GOFR_IQ_WEB_PORT_TEST}"
+    echo ""
+    echo "Infrastructure (Production):"
     echo "  vault:     Port=${GOFR_VAULT_PORT}"
     echo "  chroma:    Port=${GOFR_CHROMA_PORT}"
     echo "  neo4j:     HTTP=${GOFR_NEO4J_HTTP_PORT} Bolt=${GOFR_NEO4J_BOLT_PORT}"
+    echo ""
+    echo "Infrastructure (Test):"
+    echo "  vault:     Port=${GOFR_VAULT_PORT_TEST}"
+    echo "  chroma:    Port=${GOFR_CHROMA_PORT_TEST}"
+    echo "  neo4j:     HTTP=${GOFR_NEO4J_HTTP_PORT_TEST} Bolt=${GOFR_NEO4J_BOLT_PORT_TEST}"
 }
 export -f gofr_ports_list
+
+# Helper function to set test ports (call this for test environments)
+gofr_set_test_ports() {
+    local service="${1:-all}"
+    case "${service}" in
+        gofr-doc|doc)
+            export GOFR_DOC_MCP_PORT="${GOFR_DOC_MCP_PORT_TEST}"
+            export GOFR_DOC_MCPO_PORT="${GOFR_DOC_MCPO_PORT_TEST}"
+            export GOFR_DOC_WEB_PORT="${GOFR_DOC_WEB_PORT_TEST}"
+            ;;
+        gofr-plot|plot)
+            export GOFR_PLOT_MCP_PORT="${GOFR_PLOT_MCP_PORT_TEST}"
+            export GOFR_PLOT_MCPO_PORT="${GOFR_PLOT_MCPO_PORT_TEST}"
+            export GOFR_PLOT_WEB_PORT="${GOFR_PLOT_WEB_PORT_TEST}"
+            ;;
+        gofr-np|np)
+            export GOFR_NP_MCP_PORT="${GOFR_NP_MCP_PORT_TEST}"
+            export GOFR_NP_MCPO_PORT="${GOFR_NP_MCPO_PORT_TEST}"
+            export GOFR_NP_WEB_PORT="${GOFR_NP_WEB_PORT_TEST}"
+            ;;
+        gofr-dig|dig)
+            export GOFR_DIG_MCP_PORT="${GOFR_DIG_MCP_PORT_TEST}"
+            export GOFR_DIG_MCPO_PORT="${GOFR_DIG_MCPO_PORT_TEST}"
+            export GOFR_DIG_WEB_PORT="${GOFR_DIG_WEB_PORT_TEST}"
+            ;;
+        gofr-iq|iq)
+            export GOFR_IQ_MCP_PORT="${GOFR_IQ_MCP_PORT_TEST}"
+            export GOFR_IQ_MCPO_PORT="${GOFR_IQ_MCPO_PORT_TEST}"
+            export GOFR_IQ_WEB_PORT="${GOFR_IQ_WEB_PORT_TEST}"
+            # Also set legacy CHROMA/NEO4J vars for gofr-iq
+            export GOFR_IQ_CHROMA_PORT="${GOFR_CHROMA_PORT_TEST}"
+            export GOFR_IQ_NEO4J_BOLT_PORT="${GOFR_NEO4J_BOLT_PORT_TEST}"
+            ;;
+        infra|infrastructure)
+            export GOFR_VAULT_PORT="${GOFR_VAULT_PORT_TEST}"
+            export GOFR_CHROMA_PORT="${GOFR_CHROMA_PORT_TEST}"
+            export GOFR_NEO4J_HTTP_PORT="${GOFR_NEO4J_HTTP_PORT_TEST}"
+            export GOFR_NEO4J_BOLT_PORT="${GOFR_NEO4J_BOLT_PORT_TEST}"
+            ;;
+        all)
+            # Set all services to test ports
+            gofr_set_test_ports gofr-doc
+            gofr_set_test_ports gofr-plot
+            gofr_set_test_ports gofr-np
+            gofr_set_test_ports gofr-dig
+            gofr_set_test_ports gofr-iq
+            gofr_set_test_ports infra
+            ;;
+        *)
+            echo "Error: Unknown service '${service}'" >&2
+            echo "Available: gofr-doc, gofr-plot, gofr-np, gofr-dig, gofr-iq, infra, all" >&2
+            return 1
+            ;;
+    esac
+}
+export -f gofr_set_test_ports
 
 # Helper function to get ports for a specific service
 gofr_get_ports() {

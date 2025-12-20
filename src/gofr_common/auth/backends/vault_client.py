@@ -220,6 +220,7 @@ class VaultClient:
             response = self._client.secrets.kv.v2.read_secret_version(
                 path=path,
                 mount_point=self.config.mount_point,
+                raise_on_deleted_version=True,
             )
             if response and "data" in response and "data" in response["data"]:
                 return response["data"]["data"]
@@ -341,6 +342,7 @@ class VaultClient:
             response = self._client.secrets.kv.v2.read_secret_version(
                 path=path,
                 mount_point=self.config.mount_point,
+                raise_on_deleted_version=True,
             )
             return response is not None
         except InvalidPath:
