@@ -5,8 +5,15 @@
 
 set -e
 
+# Source port configuration if available
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORTS_CONFIG="${SCRIPT_DIR}/../../../config/gofr_ports.sh"
+if [[ -f "${PORTS_CONFIG}" ]]; then
+    source "${PORTS_CONFIG}"
+fi
+
 DOCKER_NETWORK="${GOFR_NETWORK:-gofr-net}"
-CHROMA_PORT="${CHROMA_PORT:-8000}"
+CHROMA_PORT="${GOFR_CHROMA_PORT:-8000}"
 CONTAINER_NAME="gofr-chroma"
 
 # Parse arguments

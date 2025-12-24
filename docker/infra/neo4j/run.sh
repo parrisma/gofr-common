@@ -5,9 +5,16 @@
 
 set -e
 
+# Source port configuration if available
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORTS_CONFIG="${SCRIPT_DIR}/../../../config/gofr_ports.sh"
+if [[ -f "${PORTS_CONFIG}" ]]; then
+    source "${PORTS_CONFIG}"
+fi
+
 DOCKER_NETWORK="${GOFR_NETWORK:-gofr-net}"
-HTTP_PORT="${NEO4J_HTTP_PORT:-7474}"
-BOLT_PORT="${NEO4J_BOLT_PORT:-7687}"
+HTTP_PORT="${GOFR_NEO4J_HTTP_PORT:-7474}"
+BOLT_PORT="${GOFR_NEO4J_BOLT_PORT:-7687}"
 CONTAINER_NAME="gofr-neo4j"
 NEO4J_PASSWORD="${NEO4J_PASSWORD:-gofr-neo4j-password}"
 

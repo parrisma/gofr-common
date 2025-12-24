@@ -190,6 +190,47 @@ class AuthProvider:
         except RuntimeError as e:
             raise HTTPException(status_code=500, detail=str(e))
 
+    def verify_token_strict(
+        self,
+        request: Request,
+        credentials: HTTPAuthorizationCredentials = Security(_security),
+    ) -> TokenInfo:
+        """Verify JWT token with group validation.
+
+        Like verify_token(), but also validates that all groups in the token
+        are still active in the group registry. Use this when you need
+        real-time enforcement of group status.
+
+        This is a FastAPI dependency function.
+
+        Args:
+            request: FastAPI request object
+            credentials: HTTP authorization credentials
+
+        Returns:
+            TokenInfo with groups and expiry information
+
+        Raises:
+            HTTPException: 401 if token invalid, 403 if group defunct, 500 if service error
+        """
+        from .exceptions import InvalidGroupError
+
+        try:
+            fingerprint = _generate_fingerprint(request)
+            return self._service.verify_token(
+                credentials.credentials,
+                fingerprint=fingerprint,
+                validate_groups=True,
+            )
+        except InvalidGroupError as e:
+            self._log_failure(request, str(e))
+            raise HTTPException(status_code=403, detail=str(e))
+        except ValueError as e:
+            self._log_failure(request, str(e))
+            raise HTTPException(status_code=401, detail=str(e))
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
     def verify_token_optional(
         self,
         request: Request,

@@ -22,12 +22,32 @@ All GOFR services now use a consistent port allocation strategy defined in `gofr
 | gofr-dig   | 8070 | 8070 | 8071 | 8072 | Data ingestion and processing    |
 | gofr-iq    | 8080 | 8080 | 8081 | 8082 | Intelligence and query           |
 
+## Infrastructure Ports
+
+| Service    | Port(s)       | Test Port(s) | Purpose                          |
+|------------|---------------|--------------|----------------------------------|
+| ChromaDB   | 8000          | 8100         | Vector Database                  |
+| Vault      | 8201          | 8301         | Secrets Management               |
+| Neo4j      | 7474 (HTTP)   | 7574         | Graph Database (HTTP)            |
+|            | 7687 (Bolt)   | 7787         | Graph Database (Bolt)            |
+
+## Test Port Strategy
+
+Test ports are allocated by adding **100** to the production port number. This allows running tests in parallel with production services without conflict.
+
+| Service    | Base (Test) | MCP (Test) | MCPO (Test) | Web (Test) |
+|------------|-------------|------------|-------------|------------|
+| gofr-doc   | 8140        | 8140       | 8141        | 8142       |
+| gofr-plot  | 8150        | 8150       | 8151        | 8152       |
+| gofr-np    | 8160        | 8160       | 8161        | 8162       |
+| gofr-dig   | 8170        | 8170       | 8171        | 8172       |
+| gofr-iq    | 8180        | 8180       | 8181        | 8182       |
+
 ## Reserved Ports for Future Services
 
-- 8090-8092: Reserved
-- 8100-8102: Reserved
-- 8110-8112: Reserved
-- etc.
+- 8090-8092: Reserved (Test: 8190-8192)
+- 8100-8102: Used by ChromaDB Test
+- 8110-8139: Available for future services (Test: 8210-8239)
 
 ## Configuration Files Updated
 

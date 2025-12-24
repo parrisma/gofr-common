@@ -90,11 +90,15 @@ PORTS = {
     ),
 }
 
-# Reserved ports for future services
-# 8090-8092: Reserved
-# 8100-8102: Reserved
-# 8110-8112: Reserved
-# etc.
+# Test Port Strategy: Prod + 100
+# gofr-doc test: 8140-8142
+# gofr-plot test: 8150-8152
+# ...
+
+# Infrastructure Ports
+# ChromaDB: 8000 (Test: 8100)
+# Vault: 8201 (Test: 8301)
+# Neo4j: 7474/7687 (Test: 7574/7787)
 
 
 def get_ports(service_name: str) -> ServicePorts:

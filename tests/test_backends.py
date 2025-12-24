@@ -1070,6 +1070,7 @@ class TestVaultClientReadSecret:
         mock_client.secrets.kv.v2.read_secret_version.assert_called_once_with(
             path="myapp/config",
             mount_point="secret",
+            raise_on_deleted_version=True,
         )
 
     def test_read_secret_not_found(self, mock_hvac, client):

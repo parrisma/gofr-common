@@ -35,6 +35,19 @@ gofr-common/
     └── restore_backup.sh  # Restore from backup
 ```
 
+### Backup Manifest
+
+The system maintains a `manifest.json` file in the root of the backup directory. This file tracks:
+- Backup filenames and paths
+- Creation timestamps
+- File sizes
+- Verification status
+- Tier information (daily/weekly/monthly)
+
+This manifest is used by the housekeeping and verification processes to manage the backup lifecycle efficiently.
+
+Additionally, a `.sha256` checksum file is generated for each backup archive to ensure data integrity. This file is used during the verification process.
+
 ### Integration Pattern
 
 Each GOFR project has:
@@ -293,28 +306,6 @@ docker-compose ps backup
 ./scripts/list_backups.sh
 ```
 
-## Troubleshooting
-
-### Backup Service Not Starting
-
-1. Check logs: `docker-compose logs backup`
-2. Verify `GOFR_PROJECT` is set correctly
-3. Ensure gofr-common is up to date: `cd lib/gofr-common && git pull`
-
-### Backups Not Running
-
-1. Check `GOFR_{PROJECT}_BACKUP_ENABLED=true`
-2. Verify cron schedule format
-3. View next scheduled run in logs
-4. Test manual backup: `./scripts/backup_now.sh`
-
-### Restore Fails
-
-1. Verify backup integrity first (automatic during restore)
-2. Stop services before restoring
-3. Check disk space
-4. Review logs
-
 ## Development
 
 ### Adding Backup to a New GOFR Project
@@ -362,7 +353,36 @@ GOFR_PROJECT_BACKUP_PATHS="db:database.db,logs:logs,config:config.json"
 - Minimal impact (runs during low-usage hours)
 - Read-only access (no locking)
 - Configurable compression (balance speed vs. size)
-- Background operation (no service blocking)
+
+## Troubleshooting
+
+### Backup Service Not Starting
+1. Check logs: `docker-compose logs backup`
+2. Verify `GOFR_PROJECT` environment variable is set.
+3. Verify `gofr_{project}_data` and `gofr_{project}_backups` volumes exist.
+4. Ensure gofr-common is up to date: `cd lib/gofr-common && git pull`
+
+### Backups Not Running
+1. Check `GOFR_{PROJECT}_BACKUP_ENABLED=true`
+2. Verify cron schedule format
+3. View next scheduled run in logs
+4. Test manual backup: `./scripts/backup_now.sh`
+
+### Backup Verification Failed
+- Check disk space on the backup volume.
+- Verify the integrity of the source files (are they locked?).
+- Check logs for specific error messages during the verification step.
+
+### "No data found to backup"
+- Verify `GOFR_{PROJECT}_BACKUP_PATHS` is correct.
+- Ensure paths are relative to the `/data` mount point inside the container.
+- Check if the source directories actually contain files.
+
+### Restore Fails
+1. Verify backup integrity first (automatic during restore)
+2. Stop services before restoring
+3. Check disk space
+4. Review logs
 
 ## Support
 

@@ -116,10 +116,10 @@ services:
       - gofr-internal
     ports:
       - target: 7474
-        published: 7474
+        published: ${GOFR_NEO4J_HTTP_PORT:-7474}
         mode: host
       - target: 7687
-        published: 7687
+        published: ${GOFR_NEO4J_BOLT_PORT:-7687}
         mode: host
     volumes:
       - gofr-neo4j-data:/data
@@ -164,7 +164,7 @@ services:
       - gofr-internal
     ports:
       - target: 8000
-        published: 8000
+        published: ${GOFR_CHROMA_PORT:-8000}
         mode: host
     volumes:
       - gofr-chroma-data:/chroma/chroma
@@ -209,22 +209,22 @@ services:
       - gofr-internal
     ports:
       - target: 8050
-        published: 8050
+        published: ${GOFR_PLOT_MCP_PORT:-8050}
         mode: host
       - target: 8051
-        published: 8051
+        published: ${GOFR_PLOT_MCPO_PORT:-8051}
         mode: host
       - target: 8052
-        published: 8052
+        published: ${GOFR_PLOT_WEB_PORT:-8052}
         mode: host
     volumes:
       - gofr-plot-data:/home/gofr-plot/data
       - gofr-plot-logs:/home/gofr-plot/logs
     environment:
       - GOFR_PLOT_JWT_SECRET=${JWT_SECRET:-changeme}
-      - GOFR_PLOT_MCP_PORT=8050
-      - GOFR_PLOT_MCPO_PORT=8051
-      - GOFR_PLOT_WEB_PORT=8052
+      - GOFR_PLOT_MCP_PORT=${GOFR_PLOT_MCP_PORT:-8050}
+      - GOFR_PLOT_MCPO_PORT=${GOFR_PLOT_MCPO_PORT:-8051}
+      - GOFR_PLOT_WEB_PORT=${GOFR_PLOT_WEB_PORT:-8052}
       - NEO4J_URI=bolt://gofr-neo4j:7687
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
@@ -266,22 +266,22 @@ services:
       - gofr-internal
     ports:
       - target: 8040
-        published: 8040
+        published: ${GOFR_DOC_MCP_PORT:-8040}
         mode: host
       - target: 8041
-        published: 8041
+        published: ${GOFR_DOC_MCPO_PORT:-8041}
         mode: host
       - target: 8042
-        published: 8042
+        published: ${GOFR_DOC_WEB_PORT:-8042}
         mode: host
     volumes:
       - gofr-doc-data:/home/gofr-doc/data
       - gofr-doc-logs:/home/gofr-doc/logs
     environment:
       - GOFR_DOC_JWT_SECRET=${JWT_SECRET:-changeme}
-      - GOFR_DOC_MCP_PORT=8040
-      - GOFR_DOC_MCPO_PORT=8041
-      - GOFR_DOC_WEB_PORT=8042
+      - GOFR_DOC_MCP_PORT=${GOFR_DOC_MCP_PORT:-8040}
+      - GOFR_DOC_MCPO_PORT=${GOFR_DOC_MCPO_PORT:-8041}
+      - GOFR_DOC_WEB_PORT=${GOFR_DOC_WEB_PORT:-8042}
       - NEO4J_URI=bolt://gofr-neo4j:7687
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
@@ -317,22 +317,22 @@ services:
       - gofr-internal
     ports:
       - target: 8070
-        published: 8070
+        published: ${GOFR_DIG_MCP_PORT:-8070}
         mode: host
       - target: 8071
-        published: 8071
+        published: ${GOFR_DIG_MCPO_PORT:-8071}
         mode: host
       - target: 8072
-        published: 8072
+        published: ${GOFR_DIG_WEB_PORT:-8072}
         mode: host
     volumes:
       - gofr-dig-data:/home/gofr-dig/data
       - gofr-dig-logs:/home/gofr-dig/logs
     environment:
       - JWT_SECRET=${JWT_SECRET:-changeme}
-      - MCP_PORT=8070
-      - MCPO_PORT=8071
-      - WEB_PORT=8072
+      - MCP_PORT=${GOFR_DIG_MCP_PORT:-8070}
+      - MCPO_PORT=${GOFR_DIG_MCPO_PORT:-8071}
+      - WEB_PORT=${GOFR_DIG_WEB_PORT:-8072}
       - NEO4J_URI=bolt://gofr-neo4j:7687
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
@@ -368,22 +368,22 @@ services:
       - gofr-internal
     ports:
       - target: 8080
-        published: 8080
+        published: ${GOFR_IQ_MCP_PORT:-8080}
         mode: host
       - target: 8081
-        published: 8081
+        published: ${GOFR_IQ_MCPO_PORT:-8081}
         mode: host
       - target: 8082
-        published: 8082
+        published: ${GOFR_IQ_WEB_PORT:-8082}
         mode: host
     volumes:
       - gofr-iq-data:/home/gofr-iq/data
       - gofr-iq-logs:/home/gofr-iq/logs
     environment:
       - JWT_SECRET=${JWT_SECRET:-changeme}
-      - MCP_PORT=8080
-      - MCPO_PORT=8081
-      - WEB_PORT=8082
+      - MCP_PORT=${GOFR_IQ_MCP_PORT:-8080}
+      - MCPO_PORT=${GOFR_IQ_MCPO_PORT:-8081}
+      - WEB_PORT=${GOFR_IQ_WEB_PORT:-8082}
       - NEO4J_URI=bolt://gofr-neo4j:7687
       - NEO4J_USER=neo4j
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-gofr-neo4j-password}
@@ -422,22 +422,22 @@ services:
       - gofr-internal
     ports:
       - target: 8060
-        published: 8060
+        published: ${GOFR_NP_MCP_PORT:-8060}
         mode: host
       - target: 8061
-        published: 8061
+        published: ${GOFR_NP_MCPO_PORT:-8061}
         mode: host
       - target: 8062
-        published: 8062
+        published: ${GOFR_NP_WEB_PORT:-8062}
         mode: host
     volumes:
       - gofr-np-data:/home/gofr-np/data
       - gofr-np-logs:/home/gofr-np/logs
     environment:
       - JWT_SECRET=${JWT_SECRET:-changeme}
-      - MCP_PORT=8060
-      - MCPO_PORT=8061
-      - WEB_PORT=8062
+      - MCP_PORT=${GOFR_NP_MCP_PORT:-8060}
+      - MCPO_PORT=${GOFR_NP_MCPO_PORT:-8061}
+      - WEB_PORT=${GOFR_NP_WEB_PORT:-8062}
     deploy:
       mode: replicated
       replicas: 1
@@ -487,16 +487,16 @@ services:
       - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
       - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
       # MCP Endpoints for n8n workflows
-      - GOFR_PLOT_MCP=http://gofr-plot:8050
-      - GOFR_PLOT_MCPO=http://gofr-plot:8051
-      - GOFR_DOC_MCP=http://gofr-doc:8040
-      - GOFR_DOC_MCPO=http://gofr-doc:8041
-      - GOFR_DIG_MCP=http://gofr-dig:8070
-      - GOFR_DIG_MCPO=http://gofr-dig:8071
-      - GOFR_IQ_MCP=http://gofr-iq:8080
-      - GOFR_IQ_MCPO=http://gofr-iq:8081
-      - GOFR_NP_MCP=http://gofr-np:8060
-      - GOFR_NP_MCPO=http://gofr-np:8061
+      - GOFR_PLOT_MCP=http://gofr-plot:${GOFR_PLOT_MCP_PORT:-8050}
+      - GOFR_PLOT_MCPO=http://gofr-plot:${GOFR_PLOT_MCPO_PORT:-8051}
+      - GOFR_DOC_MCP=http://gofr-doc:${GOFR_DOC_MCP_PORT:-8040}
+      - GOFR_DOC_MCPO=http://gofr-doc:${GOFR_DOC_MCPO_PORT:-8041}
+      - GOFR_DIG_MCP=http://gofr-dig:${GOFR_DIG_MCP_PORT:-8070}
+      - GOFR_DIG_MCPO=http://gofr-dig:${GOFR_DIG_MCPO_PORT:-8071}
+      - GOFR_IQ_MCP=http://gofr-iq:${GOFR_IQ_MCP_PORT:-8080}
+      - GOFR_IQ_MCPO=http://gofr-iq:${GOFR_IQ_MCPO_PORT:-8081}
+      - GOFR_NP_MCP=http://gofr-np:${GOFR_NP_MCP_PORT:-8060}
+      - GOFR_NP_MCPO=http://gofr-np:${GOFR_NP_MCPO_PORT:-8061}
     deploy:
       mode: replicated
       replicas: 1
@@ -538,11 +538,11 @@ services:
       - ENABLE_SIGNUP=true
       - DEFAULT_USER_ROLE=user
       # MCPO endpoints for tool integration
-      - GOFR_PLOT_URL=http://gofr-plot:8051
-      - GOFR_DOC_URL=http://gofr-doc:8041
-      - GOFR_DIG_URL=http://gofr-dig:8071
-      - GOFR_IQ_URL=http://gofr-iq:8081
-      - GOFR_NP_URL=http://gofr-np:8061
+      - GOFR_PLOT_URL=http://gofr-plot:${GOFR_PLOT_MCPO_PORT:-8051}
+      - GOFR_DOC_URL=http://gofr-doc:${GOFR_DOC_MCPO_PORT:-8041}
+      - GOFR_DIG_URL=http://gofr-dig:${GOFR_DIG_MCPO_PORT:-8071}
+      - GOFR_IQ_URL=http://gofr-iq:${GOFR_IQ_MCPO_PORT:-8081}
+      - GOFR_NP_URL=http://gofr-np:${GOFR_NP_MCPO_PORT:-8061}
     deploy:
       mode: replicated
       replicas: 1

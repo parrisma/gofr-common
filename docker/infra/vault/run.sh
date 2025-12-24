@@ -37,6 +37,7 @@ DOCKER_NETWORK="${GOFR_NETWORK:-gofr-net}"
 VAULT_PORT="${GOFR_VAULT_PORT:-8201}"
 ROOT_TOKEN="${GOFR_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
 MODE="test"  # Default to test mode
+CUSTOM_NAME=""  # Optional custom container name
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -57,8 +58,12 @@ while [[ $# -gt 0 ]]; do
             DOCKER_NETWORK="$2"
             shift 2
             ;;
+        --name)
+            CUSTOM_NAME="$2"
+            shift 2
+            ;;
         --help|-h)
-            echo "Usage: $0 [--test|--prod] [--port PORT] [--network NETWORK]"
+            echo "Usage: $0 [--test|--prod] [--port PORT] [--network NETWORK] [--name NAME]"
             echo ""
             echo "Modes:"
             echo "  --test, -t    Ephemeral dev mode (default) - in-memory, auto-unsealed"
@@ -67,6 +72,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --port PORT       Host port to expose (default: ${VAULT_PORT})"
             echo "  --network NET     Docker network (default: ${DOCKER_NETWORK})"
+            echo "  --name NAME       Custom container name (overrides default)"
             exit 0
             ;;
         *)
@@ -77,8 +83,10 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Set container name based on mode
-if [[ "$MODE" == "test" ]]; then
+# Set container name based on mode (or use custom name if provided)
+if [[ -n "$CUSTOM_NAME" ]]; then
+    CONTAINER_NAME="$CUSTOM_NAME"
+elif [[ "$MODE" == "test" ]]; then
     CONTAINER_NAME="gofr-vault"
 else
     CONTAINER_NAME="gofr-vault-prod"

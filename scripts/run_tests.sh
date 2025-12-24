@@ -8,6 +8,7 @@
 # - Configures PYTHONPATH for gofr-common discovery
 # - Supports coverage reporting
 # - Supports Docker execution
+# - Optionally starts Vault in ephemeral test mode
 # - Runs pytest with proper configuration
 #
 # Usage:
@@ -19,6 +20,7 @@
 #   ./scripts/run_tests.sh --coverage-html         # Run with HTML coverage report
 #   ./scripts/run_tests.sh --docker                # Run tests in Docker container
 #   ./scripts/run_tests.sh --unit                  # Run unit tests only
+#   ./scripts/run_tests.sh --vault                 # Start Vault for integration tests
 #   ./scripts/run_tests.sh --cleanup-only          # Clean environment only
 # =============================================================================
 
@@ -65,6 +67,24 @@ export GOFR_COMMON_ENV="TEST"
 export GOFR_COMMON_JWT_SECRET="test-secret-key-for-secure-testing-do-not-use-in-production"
 export GOFR_COMMON_LOG_LEVEL="DEBUG"
 
+# Source port configuration for test ports
+PORTS_CONFIG="${PROJECT_ROOT}/config/gofr_ports.sh"
+if [[ -f "${PORTS_CONFIG}" ]]; then
+    source "${PORTS_CONFIG}"
+    # Switch to test ports (prod + 100)
+    gofr_set_test_ports infra
+else
+    echo -e "${YELLOW}Warning: Port config not found at ${PORTS_CONFIG}${NC}"
+fi
+
+# Vault test configuration (uses test port from gofr_ports.sh)
+VAULT_SCRIPT_DIR="${PROJECT_ROOT}/docker/infra/vault"
+VAULT_CONTAINER_NAME="gofr-vault-test"
+VAULT_TEST_PORT="${GOFR_VAULT_PORT}"  # Already set to test port by gofr_set_test_ports
+VAULT_TEST_TOKEN="${GOFR_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
+TEST_NETWORK="gofr-test-net"
+DEV_CONTAINER_NAME="gofr-common-dev"
+
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
@@ -86,6 +106,76 @@ cleanup_environment() {
     echo -e "${GREEN}Cleanup complete${NC}"
 }
 
+start_vault_test_container() {
+    echo -e "${BLUE}Starting Vault in ephemeral test mode...${NC}"
+    
+    # Ensure test network exists
+    if ! docker network ls --format '{{.Name}}' | grep -q "^${TEST_NETWORK}$"; then
+        echo "Creating test network: ${TEST_NETWORK}"
+        docker network create "${TEST_NETWORK}"
+    fi
+    
+    # Connect dev container to test network if not already connected
+    if docker ps --format '{{.Names}}' | grep -q "^${DEV_CONTAINER_NAME}$"; then
+        if ! docker network inspect "${TEST_NETWORK}" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q "${DEV_CONTAINER_NAME}"; then
+            echo "Connecting ${DEV_CONTAINER_NAME} to ${TEST_NETWORK}..."
+            docker network connect "${TEST_NETWORK}" "${DEV_CONTAINER_NAME}" 2>/dev/null || true
+        fi
+    fi
+    
+    # Check if Vault image exists
+    if ! docker images gofr-vault:latest --format '{{.Repository}}' | grep -q "gofr-vault"; then
+        echo -e "${YELLOW}Building Vault image first...${NC}"
+        if [ -f "${VAULT_SCRIPT_DIR}/build.sh" ]; then
+            bash "${VAULT_SCRIPT_DIR}/build.sh"
+        else
+            echo -e "${RED}Vault build script not found at ${VAULT_SCRIPT_DIR}/build.sh${NC}"
+            return 1
+        fi
+    fi
+    
+    # Stop any existing test container
+    if docker ps -aq -f name="^${VAULT_CONTAINER_NAME}$" | grep -q .; then
+        echo "Stopping existing Vault test container..."
+        docker stop ${VAULT_CONTAINER_NAME} 2>/dev/null || true
+        docker rm ${VAULT_CONTAINER_NAME} 2>/dev/null || true
+    fi
+    
+    # Start Vault using the run.sh script in test mode on test network
+    if [ -f "${VAULT_SCRIPT_DIR}/run.sh" ]; then
+        bash "${VAULT_SCRIPT_DIR}/run.sh" --test --port "${VAULT_TEST_PORT}" --name "${VAULT_CONTAINER_NAME}" --network "${TEST_NETWORK}"
+    else
+        echo -e "${RED}Vault run script not found at ${VAULT_SCRIPT_DIR}/run.sh${NC}"
+        return 1
+    fi
+    
+    # Set environment variables for tests (use container name for network access)
+    export GOFR_VAULT_URL="http://${VAULT_CONTAINER_NAME}:8200"
+    export GOFR_VAULT_TOKEN="${VAULT_TEST_TOKEN}"
+    
+    echo -e "${GREEN}Vault started successfully${NC}"
+    echo "  Network: ${TEST_NETWORK}"
+    echo "  URL:     ${GOFR_VAULT_URL}"
+    echo "  Token:   ${GOFR_VAULT_TOKEN}"
+    echo ""
+}
+
+stop_vault_test_container() {
+    echo -e "${YELLOW}Stopping Vault test container...${NC}"
+    if docker ps -q -f name="^${VAULT_CONTAINER_NAME}$" | grep -q .; then
+        docker stop ${VAULT_CONTAINER_NAME} 2>/dev/null || true
+        docker rm ${VAULT_CONTAINER_NAME} 2>/dev/null || true
+        echo -e "${GREEN}Vault container stopped${NC}"
+    else
+        echo "Vault container was not running"
+    fi
+    
+    # Disconnect dev container from test network (optional cleanup)
+    if docker ps --format '{{.Names}}' | grep -q "^${DEV_CONTAINER_NAME}$"; then
+        docker network disconnect "${TEST_NETWORK}" "${DEV_CONTAINER_NAME}" 2>/dev/null || true
+    fi
+}
+
 # =============================================================================
 # ARGUMENT PARSING
 # =============================================================================
@@ -96,6 +186,7 @@ COVERAGE_HTML=false
 RUN_UNIT=false
 CLEANUP_ONLY=false
 SKIP_LINT=false
+USE_VAULT=true  # Default to starting Vault for integration tests
 PYTEST_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -125,6 +216,14 @@ while [[ $# -gt 0 ]]; do
             SKIP_LINT=true
             shift
             ;;
+        --vault)
+            USE_VAULT=true
+            shift
+            ;;
+        --no-vault)
+            USE_VAULT=false
+            shift
+            ;;
         --help|-h)
             echo "Usage: $0 [OPTIONS] [PYTEST_ARGS...]"
             echo ""
@@ -133,17 +232,20 @@ while [[ $# -gt 0 ]]; do
             echo "  --coverage       Run with coverage report"
             echo "  --coverage-html  Run with HTML coverage report"
             echo "  --unit           Run unit tests only"
+            echo "  --vault          Start Vault in ephemeral test mode (default)"
+            echo "  --no-vault       Skip Vault startup (exclude integration tests)"
             echo "  --skip-lint      Skip code quality checks (ruff)"
             echo "  --cleanup-only   Clean environment and exit"
             echo "  --help, -h       Show this help message"
             echo ""
             echo "Examples:"
-            echo "  $0                              # Run all tests"
+            echo "  $0                              # Run all tests (incl. Vault integration)"
             echo "  $0 tests/test_config.py        # Run specific test file"
             echo "  $0 -k 'auth'                   # Run tests matching keyword"
             echo "  $0 -v                          # Run with verbose output"
             echo "  $0 --coverage                  # Run with coverage"
             echo "  $0 --docker                    # Run in Docker"
+            echo "  $0 --no-vault                  # Skip Vault, run unit tests only"
             echo "  $0 --skip-lint                 # Skip linting, run tests only"
             exit 0
             ;;
@@ -164,6 +266,17 @@ print_header
 if [ "$CLEANUP_ONLY" = true ]; then
     cleanup_environment
     exit 0
+fi
+
+# =============================================================================
+# VAULT SETUP (if requested)
+# =============================================================================
+
+if [ "$USE_VAULT" = true ]; then
+    start_vault_test_container
+    
+    # Set up trap to stop Vault on exit (success or failure)
+    trap 'stop_vault_test_container' EXIT
 fi
 
 # =============================================================================

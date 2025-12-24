@@ -10,6 +10,43 @@ echo "======================================================================="
 echo "GOFR-Common Container Entrypoint"
 echo "======================================================================="
 
+# Fix Docker socket permissions if mounted
+# This allows the gofr user to run docker commands (sibling containers)
+if [ -S /var/run/docker.sock ]; then
+    DOCKER_SOCK_GID=$(stat -c '%g' /var/run/docker.sock)
+    echo "Docker socket detected (GID: $DOCKER_SOCK_GID)"
+    
+    # Adjust docker group GID to match host's socket GID
+    if [ "$DOCKER_SOCK_GID" != "0" ]; then
+        # Check if docker group exists with different GID
+        CURRENT_DOCKER_GID=$(getent group docker | cut -d: -f3 || echo "")
+        if [ -n "$CURRENT_DOCKER_GID" ] && [ "$CURRENT_DOCKER_GID" != "$DOCKER_SOCK_GID" ]; then
+            echo "Adjusting docker group GID from $CURRENT_DOCKER_GID to $DOCKER_SOCK_GID..."
+            sudo groupmod -g "$DOCKER_SOCK_GID" docker 2>/dev/null || true
+        elif [ -z "$CURRENT_DOCKER_GID" ]; then
+            echo "Creating docker group with GID $DOCKER_SOCK_GID..."
+            sudo groupadd -g "$DOCKER_SOCK_GID" docker 2>/dev/null || true
+        fi
+        
+        # Add gofr user to docker group if not already
+        if ! groups ${GOFR_USER} | grep -q docker; then
+            echo "Adding ${GOFR_USER} to docker group..."
+            sudo usermod -aG docker ${GOFR_USER} 2>/dev/null || true
+        fi
+    else
+        # Socket is owned by root (GID 0), make it accessible
+        echo "Docker socket owned by root, setting permissions..."
+        sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+    fi
+    
+    # Verify docker access
+    if docker info >/dev/null 2>&1; then
+        echo "Docker access: OK"
+    else
+        echo "Warning: Docker access not available (may need container restart)"
+    fi
+fi
+
 # Fix data directory permissions if mounted as volume
 if [ -d "$PROJECT_DIR/data" ]; then
     if [ ! -w "$PROJECT_DIR/data" ]; then

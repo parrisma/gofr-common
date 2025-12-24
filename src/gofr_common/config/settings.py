@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from gofr_common.config.ports import get_ports
+
 
 @dataclass
 class ServerSettings:
@@ -279,6 +281,19 @@ class Settings:
             {prefix}_LOG_LEVEL: Logging level (default: INFO)
             {prefix}_LOG_FORMAT: Log format (default: console)
         """
+        # Try to resolve defaults from standardized ports if using default values
+        if default_mcp_port == 8001 and default_web_port == 8000 and default_mcpo_port == 8002:
+            try:
+                # Convert prefix (e.g., GOFR_DOC) to service name (e.g., gofr-doc)
+                service_name = prefix.lower().replace('_', '-')
+                ports = get_ports(service_name)
+                default_mcp_port = ports.mcp
+                default_mcpo_port = ports.mcpo
+                default_web_port = ports.web
+            except KeyError:
+                # Prefix doesn't match a registered service, stick with defaults
+                pass
+
         return cls(
             server=ServerSettings.from_env(
                 prefix, default_mcp_port, default_web_port, default_mcpo_port

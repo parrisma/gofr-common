@@ -10,21 +10,32 @@ This package provides common functionality shared across all GOFR microservices:
 - **gofr-plot** - Graph rendering service
 - **gofr-np** - Numerical/math operations
 - **gofr-doc** - Document generation
+- **gofr-iq** - Intelligence and query service
+
+## Documentation
+
+| Topic | Description |
+|-------|-------------|
+| [**Authentication**](docs/GOFR_AUTH_SYSTEM.md) | JWT-based auth system, group management, and Vault integration. |
+| [**Backup System**](docs/BACKUP.md) | Automated backup infrastructure, retention policies, and verification. |
+| [**Port Standards**](docs/PORT_STANDARDIZATION.md) | Standardized port allocation strategy for all services. |
+| [**Dev Standards**](docs/GOFR_DEVELOPMENT_STANDARDS.md) | Coding style, testing requirements, and project structure. |
+| [**VS Code**](docs/VSCODE_LAUNCH_STANDARDS.md) | Debugging configurations and launch profiles. |
 
 ## Components
 
 | Module | Description |
 |--------|-------------|
 | `gofr_common.auth` | JWT authentication service and middleware |
-| `gofr_common.logger` | Logging interface and implementations |
-| `gofr_common.config` | Configuration management |
-| `gofr_common.exceptions` | Base exception classes |
+| `gofr_common.backup` | Backup orchestration and housekeeping |
+| `gofr_common.config` | Configuration management and port allocation |
+| `gofr_common.logger` | Structured logging interface |
 | `gofr_common.mcp` | MCP server utilities and response helpers |
 | `gofr_common.web` | Common web middleware (CORS, health checks) |
 
 ## Installation
 
-### As a dependency in GOFR projects
+### As a dependency
 
 ```bash
 # From local path (development)
@@ -40,14 +51,7 @@ dev-dependencies = [
 ### With optional dependencies
 
 ```bash
-# For PDF rendering support
-uv pip install -e ".[pdf]"
-
-# For plotting support  
-uv pip install -e ".[plotting]"
-
-# All optional dependencies
-uv pip install -e ".[all]"
+uv pip install -e ".[pdf,plotting,all]"
 ```
 
 ## Docker Base Image
@@ -59,36 +63,12 @@ cd docker
 ./build-base.sh
 ```
 
-This creates `gofr-base:latest` which includes:
-
-- Ubuntu 22.04
-- Python 3.11
-- UV package manager
-- System libraries for PDF/graphics rendering
-- Common fonts
-
-## Usage
-
-### Authentication
-
-```python
-from gofr_common.auth import AuthService, TokenInfo
-
-# Create auth service with project-specific prefix
-auth = AuthService(
-    env_prefix="GOFR_DIG",  # Uses GOFR_DIG_JWT_SECRET env var
-    token_store_path="/path/to/tokens.json",
-)
-
-# Create and verify tokens
-token = auth.create_token(group="users")
-info: TokenInfo = auth.verify_token(token)
-```
+## Quick Usage
 
 ### Logging
 
 ```python
-from gofr_common.logger import ConsoleLogger, Logger
+from gofr_common.logger import ConsoleLogger
 
 logger = ConsoleLogger(name="my-service")
 logger.info("Server started", port=8000, host="0.0.0.0")
@@ -97,28 +77,23 @@ logger.info("Server started", port=8000, host="0.0.0.0")
 ### Configuration
 
 ```python
-from gofr_common.config import BaseConfig
+from gofr_common.config import Settings
 
-config = BaseConfig(env_prefix="GOFR_DIG", project_name="gofr-dig")
-data_dir = config.get_data_dir()
-auth_dir = config.get_auth_dir()
+# Load all settings from environment (with defaults)
+settings = Settings.from_env(prefix="GOFR_DIG")
+
+print(f"Data Dir: {settings.storage.data_dir}")
+print(f"MCP Port: {settings.server.mcp_port}")
 ```
 
 ## Development
 
 ```bash
-# Install dev dependencies
-uv pip install -e ".[dev]"
+# Run all tests (includes Vault integration)
+./scripts/run_tests.sh --vault
 
-# Run tests
-uv run pytest
-
-# Format code
-uv run black src tests
-uv run ruff check --fix src tests
-
-# Type checking
-uv run pyright
+# Run specific test
+./scripts/run_tests.sh tests/test_config.py
 ```
 
 ## License

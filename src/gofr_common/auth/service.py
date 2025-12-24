@@ -248,6 +248,7 @@ class AuthService:
         token: str,
         fingerprint: Optional[str] = None,
         require_store: bool = True,
+        validate_groups: bool = False,
     ) -> TokenInfo:
         """Verify a JWT token and extract information.
 
@@ -256,12 +257,16 @@ class AuthService:
             fingerprint: Optional device/client fingerprint to verify against token binding
             require_store: If True, token must exist in store (default). Set False for
                           stateless verification.
+            validate_groups: If True, verify all groups in token are active in registry.
+                           Use this when you need real-time group validation at the cost
+                           of additional lookups. Default False for backward compatibility.
 
         Returns:
             TokenInfo with groups and expiry information
 
         Raises:
             ValueError: If token is invalid, expired, revoked, or security checks fail
+            InvalidGroupError: If validate_groups=True and any group is defunct or missing
         """
         try:
             # Reload token store to get latest tokens
@@ -333,6 +338,28 @@ class AuthService:
                         token_groups=groups,
                     )
                     raise TokenValidationError("Token groups mismatch in store")
+
+            # Validate groups are active in registry (if requested)
+            if validate_groups:
+                for group_name in groups:
+                    # Skip reserved groups - they're always valid
+                    if group_name in ("public", "admin"):
+                        continue
+                    group = self._group_registry.get_group_by_name(group_name)
+                    if group is None:
+                        self.logger.warning(
+                            "Token references non-existent group",
+                            token_id=token_id,
+                            group=group_name,
+                        )
+                        raise InvalidGroupError(f"Group '{group_name}' does not exist")
+                    if not group.is_active:
+                        self.logger.warning(
+                            "Token references defunct group",
+                            token_id=token_id,
+                            group=group_name,
+                        )
+                        raise InvalidGroupError(f"Group '{group_name}' is defunct")
 
             issued_at = datetime.fromtimestamp(payload["iat"])
             expires_at = datetime.fromtimestamp(payload["exp"])
