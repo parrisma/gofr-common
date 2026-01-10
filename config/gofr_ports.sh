@@ -55,6 +55,11 @@ export GOFR_IQ_WEB_PORT="${GOFR_IQ_WEB_PORT:-8082}"
 export GOFR_VAULT_PORT="${GOFR_VAULT_PORT:-8201}"
 export GOFR_VAULT_DEV_TOKEN="${GOFR_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
 
+# JWT Secret: Shared secret for token signing across all GOFR services
+# IMPORTANT: In production, set GOFR_JWT_SECRET to a secure random value
+# This default is for development only!
+export GOFR_JWT_SECRET="${GOFR_JWT_SECRET:-gofr-dev-jwt-secret-do-not-use-in-prod}"
+
 # ChromaDB: Vector database (8000)
 export GOFR_CHROMA_PORT="${GOFR_CHROMA_PORT:-8000}"
 

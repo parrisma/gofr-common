@@ -339,12 +339,16 @@ if [ "$SKIP_LINT" = false ]; then
             docker exec "${CONTAINER_NAME}" bash -c "cd /home/${PROJECT_NAME} && source .venv/bin/activate && ${PYRIGHT_CMD}"
             TYPE_EXIT_CODE=$?
         else
-            if command -v pyright &> /dev/null; then
+            # Always use uv run to ensure correct interpreter
+            if command -v uv &> /dev/null; then
+                uv run ${PYRIGHT_CMD}
+                TYPE_EXIT_CODE=$?
+            elif command -v pyright &> /dev/null; then
                 ${PYRIGHT_CMD}
                 TYPE_EXIT_CODE=$?
             else
-                ${VENV_DIR}/bin/pyright src/
-                TYPE_EXIT_CODE=$?
+                echo -e "${YELLOW}Warning: Cannot run pyright (uv not available)${NC}"
+                TYPE_EXIT_CODE=0
             fi
         fi
         

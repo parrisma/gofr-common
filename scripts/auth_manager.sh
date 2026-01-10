@@ -1,0 +1,117 @@
+#!/bin/bash
+# =============================================================================
+# Auth Manager Wrapper Script
+# =============================================================================
+# Wrapper for auth_manager.py that handles environment configuration.
+#
+# Usage:
+#   ./auth_manager.sh [--env prod|dev] [--docker] <command> [args...]
+#
+# Options:
+#   --env prod|dev    Environment mode (default: prod)
+#                     - prod: Use production ports from gofr_ports.sh
+#                     - dev: Use test ports (prod + 100)
+#   --docker          Use Docker container hostnames (default: localhost)
+#
+# Examples:
+#   ./auth_manager.sh groups list
+#   ./auth_manager.sh --env dev groups list
+#   ./auth_manager.sh --docker tokens list
+#   ./auth_manager.sh --env dev --docker groups create --name mygroup
+# =============================================================================
+
+set -euo pipefail
+
+# Get script directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON_DIR="$(dirname "${SCRIPT_DIR}")"
+CONFIG_DIR="${COMMON_DIR}/config"
+
+# Default values
+ENV_MODE="prod"
+USE_DOCKER=false
+BACKEND="vault"
+
+# Parse flags
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --env)
+            ENV_MODE="$2"
+            shift 2
+            ;;
+        --docker)
+            USE_DOCKER=true
+            shift
+            ;;
+        --backend)
+            BACKEND="$2"
+            shift 2
+            ;;
+        --help|-h)
+            echo "Usage: $0 [--env prod|dev] [--docker] [--backend vault|file|memory] <command> [args...]"
+            echo ""
+            echo "Options:"
+            echo "  --env prod|dev    Environment mode (default: prod)"
+            echo "  --docker          Use Docker container hostnames (default: localhost)"
+            echo "  --backend         Auth backend (default: vault)"
+            echo ""
+            echo "Commands:"
+            echo "  groups list                          List all groups"
+            echo "  groups create --name NAME            Create a group"
+            echo "  groups delete --name NAME            Delete a group"
+            echo "  tokens list                          List all tokens"
+            echo "  tokens create --name NAME --groups G1,G2  Create a token"
+            echo "  tokens delete --name NAME            Delete a token"
+            echo ""
+            exit 0
+            ;;
+        *)
+            # First non-flag argument starts the command
+            break
+            ;;
+    esac
+done
+
+# Validate environment mode
+if [[ "${ENV_MODE}" != "prod" && "${ENV_MODE}" != "dev" ]]; then
+    echo "Error: --env must be 'prod' or 'dev'" >&2
+    exit 1
+fi
+
+# Source port configuration
+if [[ ! -f "${CONFIG_DIR}/gofr_ports.sh" ]]; then
+    echo "Error: Port configuration not found at ${CONFIG_DIR}/gofr_ports.sh" >&2
+    exit 1
+fi
+
+source "${CONFIG_DIR}/gofr_ports.sh"
+
+# Set test ports if dev mode
+if [[ "${ENV_MODE}" == "dev" ]]; then
+    gofr_set_test_ports infra
+fi
+
+# Set hostname based on docker flag
+if [[ "${USE_DOCKER}" == true ]]; then
+    VAULT_HOST="gofr-vault"
+else
+    VAULT_HOST="localhost"
+fi
+
+# Configure Vault environment variables
+export GOFR_AUTH_BACKEND="${BACKEND}"
+export GOFR_VAULT_URL="http://${VAULT_HOST}:${GOFR_VAULT_PORT}"
+export GOFR_VAULT_TOKEN="${GOFR_VAULT_DEV_TOKEN}"
+
+# Display configuration
+echo "=== Auth Manager Configuration ===" >&2
+echo "Environment: ${ENV_MODE}" >&2
+echo "Backend: ${BACKEND}" >&2
+echo "Vault URL: ${GOFR_VAULT_URL}" >&2
+echo "Vault Token: ${GOFR_VAULT_TOKEN}" >&2
+echo "=====================================" >&2
+echo "" >&2
+
+# Run auth_manager.py with remaining arguments
+cd "${SCRIPT_DIR}"
+exec uv run python auth_manager.py "$@"

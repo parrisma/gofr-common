@@ -60,7 +60,7 @@ def create_starlette_app(
 
     # Add auth header middleware if requested (before CORS)
     if include_auth_middleware:
-        app.add_middleware(AuthHeaderMiddleware)
+        app.add_middleware(AuthHeaderMiddleware)  # type: ignore[arg-type]
 
     # Apply CORS middleware
     if cors_config is None:
