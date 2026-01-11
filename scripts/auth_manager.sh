@@ -114,4 +114,4 @@ echo "" >&2
 
 # Run auth_manager.py with remaining arguments
 cd "${SCRIPT_DIR}"
-exec uv run python auth_manager.py "$@"
+exec uv run --active python auth_manager.py "$@"

@@ -11,27 +11,39 @@
 # 3. Calls bootstrap_auth.py to create groups and tokens
 #
 # Usage:
-#   # Bootstrap with default prefix (GOFR)
+#   # Bootstrap with default prefix (GOFR) in production mode
 #   ./bootstrap_auth.sh
 #
+#   # Bootstrap for production docker environment (explicit)
+#   ./bootstrap_auth.sh --docker
+#   ./bootstrap_auth.sh --prod
+#
+#   # Bootstrap for dev/test environment (uses gofr-vault-test)
+#   ./bootstrap_auth.sh --dev
+#   ./bootstrap_auth.sh --test
+#
 #   # Bootstrap for specific project
-#   ./bootstrap_auth.sh --prefix GOFR
+#   ./bootstrap_auth.sh --prefix GOFR --docker
 #
 #   # Bootstrap groups only (no tokens)
-#   ./bootstrap_auth.sh --groups-only
+#   ./bootstrap_auth.sh --groups-only --docker
 #
 #   # Capture tokens to file
-#   ./bootstrap_auth.sh --prefix GOFR > tokens.env
+#   ./bootstrap_auth.sh --prefix GOFR --docker > tokens.env
 #   source tokens.env
 #
 #   # Use with eval for current shell
-#   eval "$(./bootstrap_auth.sh --prefix GOFR)"
+#   eval "$(./bootstrap_auth.sh --prefix GOFR --docker)"
 #
 # Environment Variables (can be set before running):
 #   GOFR_AUTH_PREFIX       Default prefix if --prefix not specified
-#   GOFR_VAULT_URL         Vault server URL (default: http://gofr-vault:8200)
+#   GOFR_VAULT_URL         Vault server URL (overrides auto-detection)
 #   GOFR_VAULT_TOKEN       Vault token (default: from gofr_ports.sh)
 #   GOFR_JWT_SECRET        JWT signing secret (auto-generated if not set)
+#
+# Environment Modes:
+#   --docker|--prod        Production mode (default): gofr-vault:8301
+#   --dev|--test           Dev/test mode: gofr-vault-test:8200
 #
 # =============================================================================
 
@@ -49,6 +61,7 @@ fi
 
 # Parse command line for --prefix to set up project-specific defaults
 PREFIX="GOFR"
+ENV_MODE="prod"  # Default to production
 EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
@@ -61,6 +74,14 @@ while [[ $# -gt 0 ]]; do
         --prefix=*)
             PREFIX="${1#*=}"
             EXTRA_ARGS+=("$1")
+            shift
+            ;;
+        --docker|--prod)
+            ENV_MODE="prod"
+            shift
+            ;;
+        --dev|--test)
+            ENV_MODE="dev"
             shift
             ;;
         *)
@@ -84,8 +105,17 @@ VAULT_MOUNT_POINT_VAR="${PREFIX}_VAULT_MOUNT_POINT"
 # Set default environment variables based on prefix
 # Use dynamic variable assignment with proper default handling
 
+# Determine Vault hostname and port based on ENV_MODE
+if [[ "${ENV_MODE}" == "prod" ]]; then
+    VAULT_HOSTNAME="gofr-vault"
+    VAULT_DEFAULT_PORT="${GOFR_VAULT_PORT_TEST:-8301}"  # prod uses docker-compose port (8301)
+else
+    VAULT_HOSTNAME="gofr-vault-test"
+    VAULT_DEFAULT_PORT="8200"  # dev/test uses test infrastructure port (8200)
+fi
+
 # Vault URL - use gofr_ports.sh port if available
-DEFAULT_VAULT_URL="http://gofr-vault:${GOFR_VAULT_PORT:-8200}"
+DEFAULT_VAULT_URL="http://${VAULT_HOSTNAME}:${VAULT_DEFAULT_PORT}"
 if [[ -z "${!VAULT_URL_VAR:-}" ]]; then
     export "${VAULT_URL_VAR}"="${DEFAULT_VAULT_URL}"
 fi
@@ -123,6 +153,7 @@ fi
 
 # Log configuration (to stderr)
 echo "=== GOFR Auth Bootstrap ===" >&2
+echo "Environment:  ${ENV_MODE}" >&2
 echo "Prefix:       ${PREFIX}" >&2
 echo "Backend:      ${!AUTH_BACKEND_VAR:-vault}" >&2
 echo "Vault URL:    ${!VAULT_URL_VAR:-not set}" >&2
@@ -135,7 +166,7 @@ cd "${GOFR_COMMON_ROOT}"
 
 # Use uv run if available, otherwise try python3 directly
 if command -v uv &> /dev/null; then
-    uv run python3 "${SCRIPT_DIR}/bootstrap_auth.py" --prefix "${PREFIX}" "${EXTRA_ARGS[@]}"
+    uv run --active python3 "${SCRIPT_DIR}/bootstrap_auth.py" --prefix "${PREFIX}" "${EXTRA_ARGS[@]}"
 elif [[ -f "${GOFR_COMMON_ROOT}/.venv/bin/python" ]]; then
     "${GOFR_COMMON_ROOT}/.venv/bin/python" "${SCRIPT_DIR}/bootstrap_auth.py" --prefix "${PREFIX}" "${EXTRA_ARGS[@]}"
 else

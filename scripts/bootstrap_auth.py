@@ -260,12 +260,12 @@ def ensure_groups(auth_service: AuthService, quiet: bool = False) -> bool:
     return all_ok
 
 
-def create_bootstrap_token(
+def has_existing_bootstrap_token(
     auth_service: AuthService,
     group_name: str,
     quiet: bool = False
-) -> Optional[str]:
-    """Create a bootstrap token for a group.
+) -> bool:
+    """Check if bootstrap token already exists for a group.
 
     Args:
         auth_service: AuthService instance
@@ -273,8 +273,61 @@ def create_bootstrap_token(
         quiet: Suppress output
 
     Returns:
-        JWT token string, or None on failure
+        True if an active long-lived token exists for this group
     """
+    try:
+        # List all active tokens
+        active_tokens = auth_service.list_tokens(status="active")
+        
+        # Find tokens that have only this group (bootstrap tokens are single-group)
+        # and have a long expiry (>1 year, indicating they're bootstrap tokens)
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()  # Use utcnow() to match TokenRecord timestamps
+        one_year = timedelta(days=365)
+        
+        for token_record in active_tokens:
+            if token_record.groups == [group_name]:
+                if token_record.expires_at:
+                    remaining = token_record.expires_at - now
+                    if remaining > one_year:
+                        # This is a long-lived bootstrap token
+                        remaining_days = remaining.days
+                        log_warn(
+                            f"Bootstrap token for '{group_name}' already exists "
+                            f"(expires: {remaining_days} days remaining). "
+                            f"Use --force-tokens to create new token.",
+                            quiet
+                        )
+                        return True
+        
+        return False
+    except Exception as e:
+        log_warn(f"Could not check for existing token for '{group_name}': {e}", quiet)
+        return False
+
+
+def create_bootstrap_token(
+    auth_service: AuthService,
+    group_name: str,
+    quiet: bool = False,
+    force: bool = False
+) -> Optional[str]:
+    """Create a bootstrap token for a group.
+
+    Args:
+        auth_service: AuthService instance
+        group_name: Name of the group
+        quiet: Suppress output
+        force: Force creation even if token exists
+
+    Returns:
+        JWT token string, or None if skipped due to existing token
+    """
+    # Check for existing token unless forced
+    if not force:
+        if has_existing_bootstrap_token(auth_service, group_name, quiet):
+            return None
+    
     try:
         token = auth_service.create_token(
             groups=[group_name],
@@ -282,7 +335,7 @@ def create_bootstrap_token(
         )
 
         expires_days = BOOTSTRAP_TOKEN_EXPIRY // (24 * 60 * 60)
-        log_success(f"Token for '{group_name}' (expires: {expires_days} days)", quiet)
+        log_success(f"Created new token for '{group_name}' (expires: {expires_days} days)", quiet)
 
         return token
     except Exception as e:
@@ -336,24 +389,38 @@ def main() -> int:
         log_info("Creating bootstrap tokens...", quiet)
 
         tokens = {}
+        tokens_skipped = []
+        
         for group_name in ["public", "admin"]:
-            token = create_bootstrap_token(auth_service, group_name, quiet)
+            token = create_bootstrap_token(
+                auth_service, 
+                group_name, 
+                quiet,
+                force=args.force_tokens
+            )
             if token:
                 tokens[group_name] = token
             else:
-                return 1
+                # Token was skipped (already exists)
+                tokens_skipped.append(group_name)
 
-        # Output tokens to stdout (for shell capture)
-        log_info("", quiet)
-        log_info("=== Bootstrap Tokens ===", quiet)
+        # Output tokens to stdout (for shell capture) only if we have new tokens
+        if tokens:
+            log_info("", quiet)
+            log_info("=== Bootstrap Tokens ===", quiet)
 
-        for group_name, token in tokens.items():
-            var_name = f"{prefix}_{group_name.upper()}_TOKEN"
-            print(f"{var_name}={token}")
+            for group_name, token in tokens.items():
+                var_name = f"{prefix}_{group_name.upper()}_TOKEN"
+                print(f"{var_name}={token}")
 
-        log_info("", quiet)
-        log_info("To use these tokens:", quiet)
-        log_info(f"  eval \"$(python {Path(__file__).name} --prefix {prefix})\"", quiet)
+            log_info("", quiet)
+            log_info("To use these tokens:", quiet)
+            log_info(f"  eval \"$(python {Path(__file__).name} --prefix {prefix})\"", quiet)
+        
+        if tokens_skipped:
+            log_info("", quiet)
+            log_info(f"Skipped groups (already have tokens): {', '.join(tokens_skipped)}", quiet)
+            log_info("Use --force-tokens to create new tokens", quiet)
     else:
         log_info("", quiet)
         log_info("Groups only mode - no tokens created", quiet)

@@ -60,12 +60,15 @@ export GOFR_VAULT_DEV_TOKEN="${GOFR_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
 # This default is for development only!
 export GOFR_JWT_SECRET="${GOFR_JWT_SECRET:-gofr-dev-jwt-secret-do-not-use-in-prod}"
 
-# ChromaDB: Vector database (8000)
+# ChromaDB: Vector database (8000 host port, 8000 internal)
 export GOFR_CHROMA_PORT="${GOFR_CHROMA_PORT:-8000}"
+export GOFR_CHROMA_INTERNAL_PORT="${GOFR_CHROMA_INTERNAL_PORT:-8000}"
 
 # Neo4j: Graph database (7474 HTTP, 7687 Bolt)
 export GOFR_NEO4J_HTTP_PORT="${GOFR_NEO4J_HTTP_PORT:-7474}"
+export GOFR_NEO4J_HTTP_INTERNAL_PORT="${GOFR_NEO4J_HTTP_INTERNAL_PORT:-7474}"
 export GOFR_NEO4J_BOLT_PORT="${GOFR_NEO4J_BOLT_PORT:-7687}"
+export GOFR_NEO4J_BOLT_INTERNAL_PORT="${GOFR_NEO4J_BOLT_INTERNAL_PORT:-7687}"
 
 # =============================================================================
 # Test Ports (Production Port + 100)
@@ -101,8 +104,11 @@ export GOFR_IQ_WEB_PORT_TEST="${GOFR_IQ_WEB_PORT_TEST:-8182}"
 # Infrastructure Test ports
 export GOFR_VAULT_PORT_TEST="${GOFR_VAULT_PORT_TEST:-8301}"
 export GOFR_CHROMA_PORT_TEST="${GOFR_CHROMA_PORT_TEST:-8100}"
+export GOFR_CHROMA_INTERNAL_PORT_TEST="${GOFR_CHROMA_INTERNAL_PORT_TEST:-8000}"
 export GOFR_NEO4J_HTTP_PORT_TEST="${GOFR_NEO4J_HTTP_PORT_TEST:-7574}"
+export GOFR_NEO4J_HTTP_INTERNAL_PORT_TEST="${GOFR_NEO4J_HTTP_INTERNAL_PORT_TEST:-7474}"
 export GOFR_NEO4J_BOLT_PORT_TEST="${GOFR_NEO4J_BOLT_PORT_TEST:-7787}"
+export GOFR_NEO4J_BOLT_INTERNAL_PORT_TEST="${GOFR_NEO4J_BOLT_INTERNAL_PORT_TEST:-7687}"
 
 # Reserved ports for future services:
 # 8090-8092: Reserved (prod)
