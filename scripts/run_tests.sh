@@ -42,6 +42,12 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Prefer uv for environment management when available
+USE_UV=false
+if command -v uv > /dev/null 2>&1; then
+    USE_UV=true
+fi
+
 # Project-specific configuration
 PROJECT_NAME="gofr-common"
 ENV_PREFIX="GOFR_COMMON"
@@ -51,12 +57,18 @@ COVERAGE_SOURCE="gofr_common"
 
 # Activate virtual environment
 VENV_DIR="${PROJECT_ROOT}/.venv"
-if [ -f "${VENV_DIR}/bin/activate" ]; then
-    source "${VENV_DIR}/bin/activate"
-    echo "Activated venv: ${VENV_DIR}"
+if [ "$USE_UV" = true ]; then
+    # Avoid VIRTUAL_ENV bleed from parent shells; uv will resolve the project env
+    unset VIRTUAL_ENV
+    echo "Using uv run for tooling (no manual venv activation)."
 else
-    echo -e "${YELLOW}Warning: Virtual environment not found at ${VENV_DIR}${NC}"
-    echo "Trying to use uv run instead..."
+    if [ -f "${VENV_DIR}/bin/activate" ]; then
+        source "${VENV_DIR}/bin/activate"
+        echo "Activated venv: ${VENV_DIR}"
+    else
+        echo -e "${YELLOW}Warning: Virtual environment not found at ${VENV_DIR}${NC}"
+        echo "Trying to use uv run instead..."
+    fi
 fi
 
 # Set up PYTHONPATH for module discovery
@@ -67,12 +79,30 @@ export GOFR_COMMON_ENV="TEST"
 export GOFR_COMMON_JWT_SECRET="test-secret-key-for-secure-testing-do-not-use-in-production"
 export GOFR_COMMON_LOG_LEVEL="DEBUG"
 
-# Source port configuration for test ports
-PORTS_CONFIG="${PROJECT_ROOT}/config/gofr_ports.sh"
+# Load port configuration from .env and apply test overrides
+PORTS_CONFIG="${PROJECT_ROOT}/config/gofr_ports.env"
 if [[ -f "${PORTS_CONFIG}" ]]; then
+    set -a
     source "${PORTS_CONFIG}"
-    # Switch to test ports (prod + 100)
-    gofr_set_test_ports infra
+    set +a
+
+    # Apply test offsets for services
+    for svc in DOC PLOT NP DIG IQ; do
+        for kind in MCP MCPO WEB; do
+            base_var="GOFR_${svc}_${kind}_PORT"
+            test_var="GOFR_${svc}_${kind}_PORT_TEST"
+            test_val="${!test_var:-}"
+            if [[ -n "${test_val}" ]]; then
+                export "${base_var}=${test_val}"
+            fi
+        done
+    done
+
+    # Infrastructure test ports
+    export GOFR_VAULT_PORT="${GOFR_VAULT_PORT_TEST:-${GOFR_VAULT_PORT}}"
+    export GOFR_CHROMA_PORT="${GOFR_CHROMA_PORT_TEST:-${GOFR_CHROMA_PORT}}"
+    export GOFR_NEO4J_HTTP_PORT="${GOFR_NEO4J_HTTP_PORT_TEST:-${GOFR_NEO4J_HTTP_PORT}}"
+    export GOFR_NEO4J_BOLT_PORT="${GOFR_NEO4J_BOLT_PORT_TEST:-${GOFR_NEO4J_BOLT_PORT}}"
 else
     echo -e "${YELLOW}Warning: Port config not found at ${PORTS_CONFIG}${NC}"
 fi
@@ -108,6 +138,17 @@ cleanup_environment() {
 
 start_vault_test_container() {
     echo -e "${BLUE}Starting Vault in ephemeral test mode...${NC}"
+
+    # Detect if script is running inside a container to choose the right Vault URL
+    is_running_in_docker() {
+        if [ -f "/.dockerenv" ]; then
+            return 0
+        fi
+        if grep -qa "docker" /proc/1/cgroup 2>/dev/null; then
+            return 0
+        fi
+        return 1
+    }
     
     # Ensure test network exists
     if ! docker network ls --format '{{.Name}}' | grep -q "^${TEST_NETWORK}$"; then
@@ -149,8 +190,14 @@ start_vault_test_container() {
         return 1
     fi
     
-    # Set environment variables for tests (use container name for network access)
-    export GOFR_VAULT_URL="http://${VAULT_CONTAINER_NAME}:8200"
+    # Set environment variables for tests
+    if is_running_in_docker; then
+        # Inside a container on the test network, talk to Vault by container name
+        export GOFR_VAULT_URL="http://${VAULT_CONTAINER_NAME}:8200"
+    else
+        # On the host, use the published test port
+        export GOFR_VAULT_URL="http://localhost:${VAULT_TEST_PORT}"
+    fi
     export GOFR_VAULT_TOKEN="${VAULT_TEST_TOKEN}"
     
     echo -e "${GREEN}Vault started successfully${NC}"
@@ -296,11 +343,11 @@ if [ "$SKIP_LINT" = false ]; then
         docker exec "${CONTAINER_NAME}" bash -c "cd /home/${PROJECT_NAME} && source .venv/bin/activate && ${RUFF_CMD}"
         LINT_EXIT_CODE=$?
     else
-        if command -v ruff &> /dev/null; then
-            ${RUFF_CMD}
-            LINT_EXIT_CODE=$?
-        elif command -v uv &> /dev/null; then
+        if [ "$USE_UV" = true ]; then
             uv run ${RUFF_CMD}
+            LINT_EXIT_CODE=$?
+        elif command -v ruff &> /dev/null; then
+            ${RUFF_CMD}
             LINT_EXIT_CODE=$?
         else
             echo -e "${YELLOW}Warning: ruff not found, skipping lint checks${NC}"
@@ -339,8 +386,7 @@ if [ "$SKIP_LINT" = false ]; then
             docker exec "${CONTAINER_NAME}" bash -c "cd /home/${PROJECT_NAME} && source .venv/bin/activate && ${PYRIGHT_CMD}"
             TYPE_EXIT_CODE=$?
         else
-            # Always use uv run to ensure correct interpreter
-            if command -v uv &> /dev/null; then
+            if [ "$USE_UV" = true ]; then
                 uv run ${PYRIGHT_CMD}
                 TYPE_EXIT_CODE=$?
             elif command -v pyright &> /dev/null; then
@@ -430,7 +476,7 @@ else
     echo "Command: ${FULL_CMD}"
     echo ""
     
-    if command -v uv &> /dev/null; then
+    if [ "$USE_UV" = true ]; then
         uv run ${FULL_CMD}
     else
         eval "${FULL_CMD}"

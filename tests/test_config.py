@@ -23,6 +23,7 @@ from gofr_common.config import (
     reset_settings,
 )
 from gofr_common.config.base import create_config_class
+from gofr_common.config.base_config import BaseConfig, InfrastructureConfig
 
 
 class TestServerSettings:
@@ -496,3 +497,69 @@ class TestConvenienceFunctions:
             result = get_public_storage_dir()
             assert isinstance(result, str)
             assert result == "/data/storage/public"
+
+
+class TestBaseConfig:
+    """Tests for BaseConfig"""
+
+    def test_defaults_and_flags(self):
+        config = BaseConfig()
+        assert config.is_dev is True
+        assert config.is_test is False
+        assert config.is_prod is False
+        assert config.project_root.exists()
+
+    def test_from_env_reads_prefix(self):
+        with patch.dict(os.environ, {
+            "GOFR_ENV": "test",
+            "GOFR_LOG_LEVEL": "debug",
+            "GOFR_LOG_FORMAT": "json",
+        }, clear=False):
+            cfg = BaseConfig.from_env()
+            assert cfg.env == "TEST"
+            assert cfg.log_level == "DEBUG"
+            assert cfg.log_format == "json"
+
+    def test_invalid_env_raises(self):
+        with pytest.raises(ValueError):
+            BaseConfig(env="LOCAL")
+
+
+class TestInfrastructureConfig:
+    """Tests for InfrastructureConfig"""
+
+    def test_loads_infra_from_env(self):
+        with patch.dict(os.environ, {
+            "GOFR_CHROMA_HOST": "chroma.local",
+            "GOFR_CHROMA_PORT": "9100",
+            "GOFR_NEO4J_HOST": "neo4j.local",
+            "GOFR_NEO4J_BOLT_PORT": "7787",
+            "GOFR_NEO4J_HTTP_PORT": "7574",
+            "GOFR_VAULT_URL": "https://vault.local",
+            "GOFR_VAULT_TOKEN": "token",
+            "GOFR_VAULT_PATH_PREFIX": "gofr/test",
+        }, clear=False):
+            cfg = InfrastructureConfig.from_env()
+            assert cfg.chroma_host == "chroma.local"
+            assert cfg.chroma_port == 9100
+            assert cfg.neo4j_host == "neo4j.local"
+            assert cfg.neo4j_bolt_port == 7787
+            assert cfg.neo4j_http_port == 7574
+            assert cfg.vault_url == "https://vault.local"
+            assert cfg.vault_token == "token"
+            assert cfg.vault_path_prefix == "gofr/test"
+
+    def test_prod_requires_vault(self):
+        with pytest.raises(ValueError, match="Vault URL required"):
+            InfrastructureConfig(env="PROD", project_root=Path.cwd())
+
+        with pytest.raises(ValueError, match="Vault token or AppRole credentials"):
+            InfrastructureConfig(env="PROD", project_root=Path.cwd(), vault_url="https://vault")
+
+        cfg = InfrastructureConfig(
+            env="PROD",
+            project_root=Path.cwd(),
+            vault_url="https://vault",
+            vault_token="token",
+        )
+        assert cfg.vault_token == "token"

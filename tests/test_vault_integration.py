@@ -30,26 +30,40 @@ VAULT_TOKEN = os.environ.get("GOFR_VAULT_TOKEN", "gofr-dev-root-token")
 
 
 def vault_available() -> bool:
-    """Check if Vault is available and healthy."""
+    """Check if Vault is available and healthy.
+
+    This function is called at test execution time, not module import time,
+    so it can properly detect Vault started by the test runner.
+    """
     try:
-        config = VaultConfig(url=VAULT_URL, token=VAULT_TOKEN)
+        # Re-read environment variables in case they were set after module import
+        vault_url = os.environ.get("GOFR_VAULT_URL", "http://gofr-vault:8200")
+        vault_token = os.environ.get("GOFR_VAULT_TOKEN", "gofr-dev-root-token")
+        config = VaultConfig(url=vault_url, token=vault_token)
         client = VaultClient(config)
         return client.health_check()
     except Exception:
         return False
 
 
-# Skip all tests in this module if Vault is not available
-pytestmark = [
-    pytest.mark.vault_integration,
-    pytest.mark.skipif(not vault_available(), reason="Vault not available"),
-]
+# Mark all tests as vault_integration but check availability at runtime
+pytestmark = pytest.mark.vault_integration
 
 
 @pytest.fixture
-def vault_config() -> VaultConfig:
+def vault_available_fixture() -> bool:
+    """Check Vault availability at test execution time and skip if not available."""
+    if not vault_available():
+        pytest.skip("Vault not available")
+    return True
+
+
+@pytest.fixture
+def vault_config(vault_available_fixture) -> VaultConfig:
     """Create a VaultConfig for testing."""
-    return VaultConfig(url=VAULT_URL, token=VAULT_TOKEN)
+    vault_url = os.environ.get("GOFR_VAULT_URL", "http://gofr-vault:8200")
+    vault_token = os.environ.get("GOFR_VAULT_TOKEN", "gofr-dev-root-token")
+    return VaultConfig(url=vault_url, token=vault_token)
 
 
 @pytest.fixture

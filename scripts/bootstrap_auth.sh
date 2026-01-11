@@ -6,7 +6,7 @@
 # (public, admin) and generating bootstrap tokens.
 #
 # This script:
-# 1. Sources port configuration from gofr_ports.sh
+# 1. Sources port configuration from gofr_ports.env
 # 2. Sets up environment variables for the specified project
 # 3. Calls bootstrap_auth.py to create groups and tokens
 #
@@ -38,7 +38,7 @@
 # Environment Variables (can be set before running):
 #   GOFR_AUTH_PREFIX       Default prefix if --prefix not specified
 #   GOFR_VAULT_URL         Vault server URL (overrides auto-detection)
-#   GOFR_VAULT_TOKEN       Vault token (default: from gofr_ports.sh)
+#   GOFR_VAULT_TOKEN       Vault token (default: from gofr_ports.env)
 #   GOFR_JWT_SECRET        JWT signing secret (auto-generated if not set)
 #
 # Environment Modes:
@@ -54,9 +54,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GOFR_COMMON_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # Source port configuration if available
-GOFR_PORTS_SH="${GOFR_COMMON_ROOT}/config/gofr_ports.sh"
-if [[ -f "$GOFR_PORTS_SH" ]]; then
-    source "$GOFR_PORTS_SH"
+GOFR_PORTS_ENV="${GOFR_COMMON_ROOT}/config/gofr_ports.env"
+if [[ -f "$GOFR_PORTS_ENV" ]]; then
+    set -a
+    source "$GOFR_PORTS_ENV"
+    set +a
 fi
 
 # Parse command line for --prefix to set up project-specific defaults
@@ -108,19 +110,19 @@ VAULT_MOUNT_POINT_VAR="${PREFIX}_VAULT_MOUNT_POINT"
 # Determine Vault hostname and port based on ENV_MODE
 if [[ "${ENV_MODE}" == "prod" ]]; then
     VAULT_HOSTNAME="gofr-vault"
-    VAULT_DEFAULT_PORT="${GOFR_VAULT_PORT_TEST:-8301}"  # prod uses docker-compose port (8301)
+    VAULT_DEFAULT_PORT="${GOFR_VAULT_PORT:-8201}"
 else
     VAULT_HOSTNAME="gofr-vault-test"
-    VAULT_DEFAULT_PORT="8200"  # dev/test uses test infrastructure port (8200)
+    VAULT_DEFAULT_PORT="${GOFR_VAULT_PORT_TEST:-8301}"
 fi
 
-# Vault URL - use gofr_ports.sh port if available
+# Vault URL - use gofr_ports.env port if available
 DEFAULT_VAULT_URL="http://${VAULT_HOSTNAME}:${VAULT_DEFAULT_PORT}"
 if [[ -z "${!VAULT_URL_VAR:-}" ]]; then
     export "${VAULT_URL_VAR}"="${DEFAULT_VAULT_URL}"
 fi
 
-# Vault token - use GOFR_VAULT_DEV_TOKEN from gofr_ports.sh if available
+# Vault token - use GOFR_VAULT_DEV_TOKEN from gofr_ports.env if available
 DEFAULT_VAULT_TOKEN="${GOFR_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
 if [[ -z "${!VAULT_TOKEN_VAR:-}" ]]; then
     export "${VAULT_TOKEN_VAR}"="${DEFAULT_VAULT_TOKEN}"

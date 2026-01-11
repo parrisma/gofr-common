@@ -11,26 +11,36 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+from gofr_common.logger import Logger, create_logger
+
+
+class Forbidden(Exception):
+    """Placeholder Forbidden error when hvac is unavailable."""
+
+
+class InvalidPath(Exception):
+    """Placeholder InvalidPath error when hvac is unavailable."""
+
+
+class InvalidRequest(Exception):
+    """Placeholder InvalidRequest error when hvac is unavailable."""
+
+
+class HvacVaultError(Exception):
+    """Placeholder VaultError when hvac is unavailable."""
+
+
 try:
     import hvac
-    from hvac.exceptions import (
-        Forbidden,
-        InvalidPath,
-        InvalidRequest,
-    )
-    from hvac.exceptions import (
-        VaultError as HvacVaultError,
-    )
-    HVAC_AVAILABLE = True
-except ImportError:
-    HVAC_AVAILABLE = False
-    hvac = None  # type: ignore[assignment]
-    Forbidden = Exception  # type: ignore[misc, assignment]
-    InvalidPath = Exception  # type: ignore[misc, assignment]
-    InvalidRequest = Exception  # type: ignore[misc, assignment]
-    HvacVaultError = Exception  # type: ignore[misc, assignment]
+    from hvac import exceptions as hvac_exceptions
 
-from gofr_common.logger import Logger, create_logger
+    Forbidden = hvac_exceptions.Forbidden  # type: ignore[assignment]
+    InvalidPath = hvac_exceptions.InvalidPath  # type: ignore[assignment]
+    InvalidRequest = hvac_exceptions.InvalidRequest  # type: ignore[assignment]
+    HvacVaultError = hvac_exceptions.VaultError  # type: ignore[assignment]
+except ImportError:
+    hvac = None  # type: ignore[assignment]
+
 
 if TYPE_CHECKING:
     from .vault_config import VaultConfig
@@ -102,7 +112,8 @@ class VaultClient:
             ImportError: If hvac is not installed
             VaultConfigError: If config is invalid
         """
-        if not HVAC_AVAILABLE:
+        # Allow patched hvac during tests even if dependency is not installed.
+        if hvac is None:
             raise ImportError(
                 "hvac is required for Vault integration. "
                 "Install with: pip install gofr-common[vault]"

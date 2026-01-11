@@ -9,7 +9,7 @@
 #
 # Options:
 #   --env prod|dev    Environment mode (default: prod)
-#                     - prod: Use production ports from gofr_ports.sh
+#                     - prod: Use production ports from gofr_ports.env
 #                     - dev: Use test ports (prod + 100)
 #   --docker          Use Docker container hostnames (default: localhost)
 #
@@ -78,17 +78,20 @@ if [[ "${ENV_MODE}" != "prod" && "${ENV_MODE}" != "dev" ]]; then
     exit 1
 fi
 
-# Source port configuration
-if [[ ! -f "${CONFIG_DIR}/gofr_ports.sh" ]]; then
-    echo "Error: Port configuration not found at ${CONFIG_DIR}/gofr_ports.sh" >&2
+# Source port configuration (.env)
+PORTS_ENV="${CONFIG_DIR}/gofr_ports.env"
+if [[ ! -f "${PORTS_ENV}" ]]; then
+    echo "Error: Port configuration not found at ${PORTS_ENV}" >&2
     exit 1
 fi
 
-source "${CONFIG_DIR}/gofr_ports.sh"
+set -a
+source "${PORTS_ENV}"
+set +a
 
 # Set test ports if dev mode
 if [[ "${ENV_MODE}" == "dev" ]]; then
-    gofr_set_test_ports infra
+    export GOFR_VAULT_PORT="${GOFR_VAULT_PORT_TEST:-${GOFR_VAULT_PORT}}"
 fi
 
 # Set hostname based on docker flag

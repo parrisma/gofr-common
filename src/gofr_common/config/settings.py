@@ -14,8 +14,9 @@ Design principles:
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Mapping, Optional
 
+from gofr_common.config.env_loader import EnvLoader
 from gofr_common.config.ports import get_ports
 
 
@@ -42,6 +43,7 @@ class ServerSettings:
         default_mcp_port: int = 8001,
         default_web_port: int = 8000,
         default_mcpo_port: int = 8002,
+        env: Optional[Mapping[str, str]] = None,
     ) -> "ServerSettings":
         """Load server settings from environment variables
 
@@ -57,11 +59,13 @@ class ServerSettings:
             {prefix}_WEB_PORT: Web server port
             {prefix}_MCPO_PORT: MCPO proxy port
         """
+        env_data = env or os.environ
+
         return cls(
-            host=os.environ.get(f"{prefix}_HOST", "0.0.0.0"),
-            mcp_port=int(os.environ.get(f"{prefix}_MCP_PORT", str(default_mcp_port))),
-            web_port=int(os.environ.get(f"{prefix}_WEB_PORT", str(default_web_port))),
-            mcpo_port=int(os.environ.get(f"{prefix}_MCPO_PORT", str(default_mcpo_port))),
+            host=env_data.get(f"{prefix}_HOST", "0.0.0.0"),
+            mcp_port=int(env_data.get(f"{prefix}_MCP_PORT", str(default_mcp_port))),
+            web_port=int(env_data.get(f"{prefix}_WEB_PORT", str(default_web_port))),
+            mcpo_port=int(env_data.get(f"{prefix}_MCPO_PORT", str(default_mcpo_port))),
         )
 
 
@@ -96,6 +100,7 @@ class AuthSettings:
         cls,
         prefix: str = "GOFR",
         require_auth: bool = True,
+        env: Optional[Mapping[str, str]] = None,
     ) -> "AuthSettings":
         """Load auth settings from environment variables
 
@@ -107,8 +112,10 @@ class AuthSettings:
             {prefix}_JWT_SECRET: JWT secret key
             {prefix}_TOKEN_STORE: Token store path
         """
-        jwt_secret = os.environ.get(f"{prefix}_JWT_SECRET")
-        token_store = os.environ.get(f"{prefix}_TOKEN_STORE")
+        env_data = env or os.environ
+
+        jwt_secret = env_data.get(f"{prefix}_JWT_SECRET")
+        token_store = env_data.get(f"{prefix}_TOKEN_STORE")
 
         return cls(
             jwt_secret=jwt_secret,
@@ -149,6 +156,7 @@ class StorageSettings:
         prefix: str = "GOFR",
         project_root: Optional[Path] = None,
         test_mode: bool = False,
+        env: Optional[Mapping[str, str]] = None,
     ) -> "StorageSettings":
         """Load storage settings from environment variables
 
@@ -161,7 +169,9 @@ class StorageSettings:
             {prefix}_DATA_DIR: Base data directory
         """
         # Check environment variable first
-        env_data_dir = os.environ.get(f"{prefix}_DATA_DIR")
+        env_data = env or os.environ
+
+        env_data_dir = env_data.get(f"{prefix}_DATA_DIR")
         if env_data_dir:
             data_dir = Path(env_data_dir)
         elif project_root:
@@ -208,16 +218,22 @@ class LogSettings:
     format: str = "console"  # console, json, or structured
 
     @classmethod
-    def from_env(cls, prefix: str = "GOFR") -> "LogSettings":
+    def from_env(
+        cls,
+        prefix: str = "GOFR",
+        env: Optional[Mapping[str, str]] = None,
+    ) -> "LogSettings":
         """Load logging settings from environment variables
 
         Environment variables:
             {prefix}_LOG_LEVEL: Logging level
             {prefix}_LOG_FORMAT: Log format
         """
+        env_data = env or os.environ
+
         return cls(
-            level=os.environ.get(f"{prefix}_LOG_LEVEL", "INFO").upper(),
-            format=os.environ.get(f"{prefix}_LOG_FORMAT", "console").lower(),
+            level=env_data.get(f"{prefix}_LOG_LEVEL", "INFO").upper(),
+            format=env_data.get(f"{prefix}_LOG_FORMAT", "console").lower(),
         )
 
 
@@ -255,6 +271,7 @@ class Settings:
         default_mcp_port: int = 8001,
         default_web_port: int = 8000,
         default_mcpo_port: int = 8002,
+        env_file: Optional[Path] = None,
     ) -> "Settings":
         """
         Load complete settings from environment variables
@@ -281,12 +298,14 @@ class Settings:
             {prefix}_LOG_LEVEL: Logging level (default: INFO)
             {prefix}_LOG_FORMAT: Log format (default: console)
         """
+        env_data = EnvLoader(env_file).load()
+
         # Try to resolve defaults from standardized ports if using default values
         if default_mcp_port == 8001 and default_web_port == 8000 and default_mcpo_port == 8002:
             try:
                 # Convert prefix (e.g., GOFR_DOC) to service name (e.g., gofr-doc)
                 service_name = prefix.lower().replace('_', '-')
-                ports = get_ports(service_name)
+                ports = get_ports(service_name, env=env_data)
                 default_mcp_port = ports.mcp
                 default_mcpo_port = ports.mcpo
                 default_web_port = ports.web
@@ -296,11 +315,11 @@ class Settings:
 
         return cls(
             server=ServerSettings.from_env(
-                prefix, default_mcp_port, default_web_port, default_mcpo_port
+                prefix, default_mcp_port, default_web_port, default_mcpo_port, env=env_data
             ),
-            auth=AuthSettings.from_env(prefix, require_auth),
-            storage=StorageSettings.from_env(prefix, project_root),
-            log=LogSettings.from_env(prefix),
+            auth=AuthSettings.from_env(prefix, require_auth, env=env_data),
+            storage=StorageSettings.from_env(prefix, project_root, env=env_data),
+            log=LogSettings.from_env(prefix, env=env_data),
             prefix=prefix,
         )
 
@@ -338,6 +357,7 @@ def get_settings(
     reload: bool = False,
     require_auth: bool = True,
     project_root: Optional[Path] = None,
+    env_file: Optional[Path] = None,
 ) -> Settings:
     """
     Get or create settings instance for a given prefix
@@ -358,6 +378,7 @@ def get_settings(
             prefix=prefix,
             require_auth=require_auth,
             project_root=project_root,
+            env_file=env_file,
         )
         _global_settings[prefix].resolve_defaults()
         _global_settings[prefix].validate()
