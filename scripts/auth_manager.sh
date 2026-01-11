@@ -94,11 +94,14 @@ if [[ "${ENV_MODE}" == "dev" ]]; then
     export GOFR_VAULT_PORT="${GOFR_VAULT_PORT_TEST:-${GOFR_VAULT_PORT}}"
 fi
 
-# Set hostname based on docker flag
+# Set hostname based on docker flag - NO localhost fallback for production
 if [[ "${USE_DOCKER}" == true ]]; then
     VAULT_HOST="gofr-vault"
 else
-    VAULT_HOST="localhost"
+    # Running outside docker - require explicit GOFR_VAULT_URL
+    echo "ERROR: Must use --docker flag when running in container environment" >&2
+    echo "       Or set GOFR_VAULT_URL explicitly for localhost access" >&2
+    exit 1
 fi
 
 # Configure Vault environment variables

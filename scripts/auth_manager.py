@@ -17,7 +17,7 @@ Usage:
 Environment Variables:
     GOFR_AUTH_BACKEND      Storage backend: memory, file, vault (default: file)
     GOFR_AUTH_DATA_DIR     Directory for auth data (default: data/auth)
-    GOFR_JWT_SECRET        JWT signing secret (auto-generated if not set)
+    GOFR_JWT_SECRET        JWT signing secret (REQUIRED - must be set in .env)
     GOFR_VAULT_URL         Vault server URL (if using vault backend)
     GOFR_VAULT_TOKEN       Vault auth token (if using vault backend)
 """
@@ -123,11 +123,14 @@ def create_auth_service(data_dir: str, backend: str = "file", quiet: bool = True
         token_store = FileTokenStore(data_path / "tokens.json")
         group_store = FileGroupStore(data_path / "groups.json")
     elif backend == "vault":
-        # Get Vault configuration from environment
-        vault_url = os.environ.get("GOFR_VAULT_URL", "http://localhost:8200")
+        # Get Vault configuration from environment - NO FALLBACKS
+        vault_url = os.environ.get("GOFR_VAULT_URL")
         vault_token = os.environ.get("GOFR_VAULT_TOKEN")
         vault_path_prefix = os.environ.get("GOFR_VAULT_PATH_PREFIX", "gofr/auth")
 
+        if not vault_url:
+            print("ERROR: GOFR_VAULT_URL environment variable required for vault backend", file=sys.stderr)
+            sys.exit(1)
         if not vault_token:
             print("ERROR: GOFR_VAULT_TOKEN environment variable required for vault backend", file=sys.stderr)
             sys.exit(1)
@@ -147,20 +150,24 @@ def create_auth_service(data_dir: str, backend: str = "file", quiet: bool = True
 
     group_registry = GroupRegistry(store=group_store, auto_bootstrap=True)
 
-    # Get or generate JWT secret
+    # JWT secret MUST be defined - this is the single source of truth
+    # shared across all services. It cannot be generated locally as that
+    # would break token verification across services.
     secret_key = os.environ.get("GOFR_JWT_SECRET")
     if not secret_key:
-        # For CLI operations, we need a consistent secret
-        # Check if there's a secret file
-        secret_file = data_path / ".jwt_secret"
-        if secret_file.exists():
-            secret_key = secret_file.read_text().strip()
-        else:
-            import secrets
-            secret_key = secrets.token_hex(32)
-            secret_file.write_text(secret_key)
-            if not quiet:
-                print(f"Generated new JWT secret (saved to {secret_file})", file=sys.stderr)
+        print(
+            "\nERROR: GOFR_JWT_SECRET environment variable is required.\n"
+            "\n"
+            "JWT secret must be defined centrally and shared across all services.\n"
+            "Set it in lib/gofr-common/.env:\n"
+            "\n"
+            "  GOFR_JWT_SECRET=gofr-dev-jwt-secret-shared-across-all-services\n"
+            "\n"
+            "Then reload your environment:\n"
+            "  source lib/gofr-common/.env\n",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
     return AuthService(
         token_store=token_store,
@@ -382,11 +389,14 @@ def main() -> int:
         default=os.environ.get("GOFR_AUTH_DATA_DIR", "data/auth"),
         help="Directory for auth data (default: data/auth or GOFR_AUTH_DATA_DIR)",
     )
+    
+    # Backend selection - no silent fallback to file
+    backend_from_env = os.environ.get("GOFR_AUTH_BACKEND")
     parser.add_argument(
         "--backend",
-        default=os.environ.get("GOFR_AUTH_BACKEND", "file"),
-        choices=["memory", "file"],
-        help="Storage backend (default: file or GOFR_AUTH_BACKEND)",
+        default=backend_from_env,
+        choices=["memory", "file", "vault"],
+        help="Storage backend (set GOFR_AUTH_BACKEND env var or use --backend)",
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -487,6 +497,13 @@ def main() -> int:
             groups_parser.print_help()
         else:
             tokens_parser.print_help()
+        return 1
+
+    # Validate backend is set - no silent fallback
+    if args.backend is None:
+        print("ERROR: Backend not specified.", file=sys.stderr)
+        print("Set GOFR_AUTH_BACKEND environment variable or use --backend flag.", file=sys.stderr)
+        print("Valid backends: memory, file, vault", file=sys.stderr)
         return 1
 
     # Create auth service (quiet mode unless verbose)

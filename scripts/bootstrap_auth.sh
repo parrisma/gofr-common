@@ -39,7 +39,7 @@
 #   GOFR_AUTH_PREFIX       Default prefix if --prefix not specified
 #   GOFR_VAULT_URL         Vault server URL (overrides auto-detection)
 #   GOFR_VAULT_TOKEN       Vault token (default: from gofr_ports.env)
-#   GOFR_JWT_SECRET        JWT signing secret (auto-generated if not set)
+#   GOFR_JWT_SECRET        JWT signing secret (REQUIRED - must be set in .env)
 #
 # Environment Modes:
 #   --docker|--prod        Production mode (default): gofr-vault:8301
@@ -144,13 +144,22 @@ if [[ -z "${!VAULT_MOUNT_POINT_VAR:-}" ]]; then
     export "${VAULT_MOUNT_POINT_VAR}"="secret"
 fi
 
-# JWT secret - generate if not set
+# JWT secret - MUST be defined centrally
+# Cannot be generated locally as it must be shared across all services
 JWT_SECRET_VAR="${PREFIX}_JWT_SECRET"
 if [[ -z "${!JWT_SECRET_VAR:-}" ]]; then
-    # Generate secure random secret
-    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
-    export "${JWT_SECRET_VAR}"="${JWT_SECRET}"
-    echo "[INFO] Generated JWT secret: ${JWT_SECRET:0:16}..." >&2
+    echo "" >&2
+    echo "ERROR: ${JWT_SECRET_VAR} environment variable is required." >&2
+    echo "" >&2
+    echo "JWT secret must be defined centrally and shared across all services." >&2
+    echo "Set it in lib/gofr-common/.env:" >&2
+    echo "" >&2
+    echo "  ${JWT_SECRET_VAR}=gofr-dev-jwt-secret-shared-across-all-services" >&2
+    echo "" >&2
+    echo "Then reload your environment:" >&2
+    echo "  source lib/gofr-common/.env" >&2
+    echo "" >&2
+    exit 1
 fi
 
 # Log configuration (to stderr)
