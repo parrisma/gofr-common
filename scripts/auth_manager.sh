@@ -87,6 +87,12 @@ fi
 
 set -a
 source "${PORTS_ENV}"
+
+# Source main .env file for tokens
+MAIN_ENV="${COMMON_DIR}/.env"
+if [[ -f "${MAIN_ENV}" ]]; then
+    source "${MAIN_ENV}"
+fi
 set +a
 
 # Set test ports if dev mode
@@ -107,7 +113,8 @@ fi
 # Configure Vault environment variables
 export GOFR_AUTH_BACKEND="${BACKEND}"
 export GOFR_VAULT_URL="http://${VAULT_HOST}:${GOFR_VAULT_PORT}"
-export GOFR_VAULT_TOKEN="${GOFR_VAULT_DEV_TOKEN}"
+# Use GOFR_VAULT_TOKEN if set, otherwise fall back to dev token
+export GOFR_VAULT_TOKEN="${GOFR_VAULT_TOKEN:-${GOFR_VAULT_DEV_TOKEN}}"
 
 # Display configuration
 echo "=== Auth Manager Configuration ===" >&2

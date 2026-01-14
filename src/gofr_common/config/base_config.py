@@ -122,18 +122,20 @@ class InfrastructureConfig(BaseConfig):
                 env_data.get(f"{prefix}_CHROMADB_PORT"), f"{prefix}_CHROMADB_PORT"
             )
 
+        # Vault is shared infrastructure - always use GOFR prefix
+        vault_prefix = "GOFR"
         return cls(
             env=base_config.env,
             project_root=base_config.project_root,
             log_level=base_config.log_level,
             log_format=base_config.log_format,
             prefix=prefix,
-            vault_url=env_data.get(f"{prefix}_VAULT_URL"),
-            vault_token=env_data.get(f"{prefix}_VAULT_TOKEN"),
-            vault_role_id=env_data.get(f"{prefix}_VAULT_ROLE_ID"),
-            vault_secret_id=env_data.get(f"{prefix}_VAULT_SECRET_ID"),
-            vault_path_prefix=env_data.get(f"{prefix}_VAULT_PATH_PREFIX", "gofr/auth"),
-            vault_mount_point=env_data.get(f"{prefix}_VAULT_MOUNT_POINT", "secret"),
+            vault_url=env_data.get(f"{vault_prefix}_VAULT_URL"),
+            vault_token=env_data.get(f"{vault_prefix}_VAULT_TOKEN"),
+            vault_role_id=env_data.get(f"{vault_prefix}_VAULT_ROLE_ID"),
+            vault_secret_id=env_data.get(f"{vault_prefix}_VAULT_SECRET_ID"),
+            vault_path_prefix=env_data.get(f"{vault_prefix}_VAULT_PATH_PREFIX", "gofr/auth"),
+            vault_mount_point=env_data.get(f"{vault_prefix}_VAULT_MOUNT_POINT", "secret"),
             chroma_host=chroma_host,
             chroma_port=chroma_port,
             neo4j_host=env_data.get(f"{prefix}_NEO4J_HOST"),
