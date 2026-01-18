@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 from datetime import datetime, timedelta
+import re
 from typing import Any, Dict, List, Literal, Optional
 
 import jwt
@@ -92,6 +93,7 @@ class TokenService:
         self._env_prefix = env_prefix.upper().replace("-", "_")
         self._audience = audience or f"{self._env_prefix.lower()}-api"
         self._store = store
+        self._token_name_pattern = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])$")
 
         # Setup logger
         if logger is not None:
@@ -147,6 +149,7 @@ class TokenService:
         groups: List[str],
         expires_in_seconds: int = 2592000,
         fingerprint: Optional[str] = None,
+        name: Optional[str] = None,
         extra_claims: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Create a new JWT token.
@@ -160,12 +163,21 @@ class TokenService:
         Returns:
             JWT token string
         """
+        self.reload()
+
+        normalized_name: Optional[str] = None
+        if name is not None:
+            normalized_name = self._normalize_and_validate_token_name(name)
+            if self._store.exists_name(normalized_name):
+                raise TokenValidationError(f"Token name '{normalized_name}' already exists")
+
         now = datetime.utcnow()
         expires_at = now + timedelta(seconds=expires_in_seconds)
 
         # Create token record
         token_record = TokenRecord.create(
             groups=groups,
+            name=normalized_name,
             expires_at=expires_at,
             fingerprint=fingerprint,
         )
@@ -196,6 +208,7 @@ class TokenService:
             token_id=str(token_record.id),
             groups=groups,
             expires_in_seconds=expires_in_seconds,
+            name=normalized_name,
         )
 
         return jwt_token
@@ -368,6 +381,12 @@ class TokenService:
             return self._store.get(token_id)
         return None
 
+    def get_by_name(self, name: str) -> Optional[TokenRecord]:
+        """Get a token record by name (lower-level convenience)."""
+        normalized_name = self._normalize_and_validate_token_name(name)
+        self.reload()
+        return self._store.get_by_name(normalized_name)
+
     def decode_without_verification(self, token: str) -> Dict[str, Any]:
         """Decode a token without verifying signature or expiry.
 
@@ -397,3 +416,16 @@ class TokenService:
             )
         except jwt.InvalidTokenError as e:
             raise TokenValidationError(f"Invalid token format: {e}")
+
+    def _normalize_and_validate_token_name(self, name: str) -> str:
+        """Normalize and validate a token name for TokenService usage."""
+        normalized = name.strip().lower()
+        if not normalized:
+            raise TokenValidationError("Token name cannot be empty")
+
+        if not self._token_name_pattern.match(normalized):
+            raise TokenValidationError(
+                "Invalid token name. Use 3-64 chars, lowercase letters/numbers, hyphens allowed between characters."
+            )
+
+        return normalized

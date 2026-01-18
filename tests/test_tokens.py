@@ -19,12 +19,21 @@ class TestTokenRecord:
         record = TokenRecord(id=token_id, groups=["admin"])
 
         assert record.id == token_id
+        assert record.name is None
         assert record.groups == ["admin"]
         assert record.status == "active"
         assert record.expires_at is None
         assert record.revoked_at is None
         assert record.fingerprint is None
         assert isinstance(record.created_at, datetime)
+
+    def test_token_record_creation_with_name(self):
+        """TokenRecord accepts optional name."""
+        token_id = uuid4()
+        record = TokenRecord(id=token_id, name="ci", groups=["admin"])
+
+        assert record.name == "ci"
+        assert record.id == token_id
 
     def test_token_record_creation_full(self):
         """Test creating a TokenRecord with all fields."""
@@ -104,6 +113,7 @@ class TestTokenRecord:
 
         record = TokenRecord(
             id=token_id,
+            name="deploy",
             groups=["admin", "users"],
             status="active",
             created_at=created,
@@ -114,6 +124,7 @@ class TestTokenRecord:
         data = record.to_dict()
 
         assert data["id"] == str(token_id)
+        assert data["name"] == "deploy"
         assert data["groups"] == ["admin", "users"]
         assert data["status"] == "active"
         assert data["created_at"] == "2024-01-01T12:00:00"
@@ -143,6 +154,7 @@ class TestTokenRecord:
         token_id = uuid4()
         data = {
             "id": str(token_id),
+            "name": "api",
             "groups": ["admin", "users"],
             "status": "active",
             "created_at": "2024-01-01T00:00:00",
@@ -154,6 +166,7 @@ class TestTokenRecord:
         record = TokenRecord.from_dict(data)
 
         assert record.id == token_id
+        assert record.name == "api"
         assert record.groups == ["admin", "users"]
         assert record.status == "active"
         assert record.created_at == datetime(2024, 1, 1, 0, 0, 0)

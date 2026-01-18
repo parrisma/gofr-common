@@ -207,6 +207,52 @@ class TestTokenCreation:
         record = list(auth._token_store.list_all().values())[0]
         assert record.fingerprint == "device-fingerprint-hash"
 
+    def test_create_token_with_name(self):
+        """Token can be created with a human-readable name."""
+        auth = create_memory_auth()
+
+        token = auth.create_token(groups=["admin"], name="dev-api")
+
+        assert token
+        record = list(auth._token_store.list_all().values())[0]
+        assert record.name == "dev-api"
+
+        fetched = auth.get_token_by_name("dev-api")
+        assert fetched is not None
+        assert fetched.id == record.id
+        assert fetched.name == "dev-api"
+
+    def test_create_token_normalizes_name(self):
+        """Names are lowercased and trimmed before storage."""
+        auth = create_memory_auth()
+
+        auth.create_token(groups=["admin"], name=" Dev-API ")
+
+        record = list(auth._token_store.list_all().values())[0]
+        assert record.name == "dev-api"
+
+    def test_create_token_rejects_invalid_name(self):
+        """Invalid name formats are rejected."""
+        auth = create_memory_auth()
+
+        with pytest.raises(TokenValidationError, match="Invalid token name"):
+            auth.create_token(groups=["admin"], name="Bad Name")
+
+    def test_create_token_name_must_be_unique(self):
+        """Duplicate token names are not allowed."""
+        auth = create_memory_auth()
+
+        auth.create_token(groups=["admin"], name="ci-token")
+
+        with pytest.raises(TokenValidationError, match="already exists"):
+            auth.create_token(groups=["admin"], name="ci-token")
+
+    def test_get_token_by_name_missing(self):
+        """Lookup by name returns None when not found."""
+        auth = create_memory_auth()
+
+        assert auth.get_token_by_name("unknown-name") is None
+
     def test_create_token_invalid_group(self):
         """Test that token creation fails for non-existent groups."""
         auth = create_memory_auth()
@@ -392,6 +438,29 @@ class TestTokenRevocation:
         result = auth.revoke_token(token)
 
         assert result is False
+
+    def test_revoke_token_by_name(self):
+        """Token can be revoked using its name."""
+        auth = create_memory_auth()
+
+        token = auth.create_token(groups=["admin"], name="ci-token")
+
+        result = auth.revoke_token_by_name("ci-token")
+
+        assert result is True
+        record = auth.get_token_by_name("ci-token")
+        assert record is not None
+        assert record.status == "revoked"
+        assert record.revoked_at is not None
+
+        with pytest.raises(TokenRevokedError):
+            auth.verify_token(token)
+
+    def test_revoke_token_by_name_not_found(self):
+        """Revocation by name returns False when missing."""
+        auth = create_memory_auth()
+
+        assert auth.revoke_token_by_name("missing-name") is False
 
 
 # ============================================================================

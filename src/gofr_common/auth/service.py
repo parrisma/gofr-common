@@ -11,6 +11,7 @@ group validation, see TokenService.
 """
 
 import hashlib
+import re
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional
 
@@ -143,6 +144,9 @@ class AuthService:
             secret_fingerprint=self._secret_fingerprint(),
         )
 
+        # Precompile token name validator (DNS-like names, 3-64 chars)
+        self._token_name_pattern = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])$")
+
     @property
     def tokens(self) -> TokenService:
         """Access the underlying TokenService.
@@ -181,6 +185,7 @@ class AuthService:
         groups: List[str],
         expires_in_seconds: int = 2592000,
         fingerprint: Optional[str] = None,
+        name: Optional[str] = None,
     ) -> str:
         """Create a new JWT token for one or more groups.
 
@@ -195,7 +200,16 @@ class AuthService:
 
         Raises:
             InvalidGroupError: If any group doesn't exist or is defunct
+            TokenValidationError: If token name is invalid or already taken
         """
+        # Reload store to ensure latest view for name uniqueness checks
+        self._reload_store()
+
+        normalized_name: Optional[str] = None
+        if name is not None:
+            normalized_name = self._normalize_and_validate_token_name(name)
+            if self._token_store.exists_name(normalized_name):
+                raise TokenValidationError(f"Token name '{normalized_name}' already exists")
         # Validate all groups exist and are active
         for group_name in groups:
             group = self._group_registry.get_group_by_name(group_name)
@@ -213,6 +227,7 @@ class AuthService:
             groups=groups,
             expires_at=expires_at,
             fingerprint=fingerprint,
+            name=normalized_name,
         )
 
         # Build JWT payload with UUID reference
@@ -239,6 +254,7 @@ class AuthService:
             groups=groups,
             expires_at=expires_at.isoformat(),
             expires_in_seconds=expires_in_seconds,
+            name=normalized_name,
         )
 
         return jwt_token
@@ -446,6 +462,36 @@ class AuthService:
             self.logger.warning("Token not found for revocation", token_id=token_id)
             return False
 
+    def revoke_token_by_name(self, name: str) -> bool:
+        """Revoke a token by its human-readable name.
+
+        Args:
+            name: Token name to revoke
+
+        Returns:
+            True if found (or already revoked), False otherwise
+        """
+        normalized_name = self._normalize_and_validate_token_name(name)
+        self._reload_store()
+
+        record = self._token_store.get_by_name(normalized_name)
+        if record is None:
+            self.logger.warning("Token name not found for revocation", token_name=normalized_name)
+            return False
+
+        if record.status == "revoked":
+            self.logger.info(
+                "Token already revoked", token_name=normalized_name, token_id=str(record.id)
+            )
+            return True
+
+        record.status = "revoked"
+        record.revoked_at = datetime.utcnow()
+        self._token_store.put(str(record.id), record)
+
+        self.logger.info("Token revoked", token_name=normalized_name, token_id=str(record.id))
+        return True
+
     def list_tokens(
         self,
         status: Optional[Literal["active", "revoked"]] = None,
@@ -481,6 +527,12 @@ class AuthService:
         if self._token_store.exists(token_id):
             return self._token_store.get(token_id)
         return None
+
+    def get_token_by_name(self, name: str) -> Optional[TokenRecord]:
+        """Get a token record by its human-readable name."""
+        normalized_name = self._normalize_and_validate_token_name(name)
+        self._reload_store()
+        return self._token_store.get_by_name(normalized_name)
 
     def resolve_token_groups(
         self,
@@ -524,3 +576,21 @@ class AuthService:
                 resolved_groups.append(public_group)
 
         return resolved_groups
+
+    def _normalize_and_validate_token_name(self, name: str) -> str:
+        """Normalize and validate a token name.
+
+        Enforces lowercase, trims surrounding whitespace, and validates DNS-like
+        pattern (3-64 chars, alphanumeric with internal hyphens).
+        """
+
+        normalized = name.strip().lower()
+        if not normalized:
+            raise TokenValidationError("Token name cannot be empty")
+
+        if not self._token_name_pattern.match(normalized):
+            raise TokenValidationError(
+                "Invalid token name. Use 3-64 chars, lowercase letters/numbers, hyphens allowed between characters."
+            )
+
+        return normalized

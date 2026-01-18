@@ -71,6 +71,17 @@ class TokenStore(Protocol):
         """
         ...
 
+    def get_by_name(self, name: str) -> Optional[TokenRecord]:
+        """Retrieve a token record by its friendly name.
+
+        Args:
+            name: Name of the token
+
+        Returns:
+            TokenRecord if found, None otherwise
+        """
+        ...
+
     def exists(self, token_id: str) -> bool:
         """Check if a token exists.
 
@@ -79,6 +90,17 @@ class TokenStore(Protocol):
 
         Returns:
             True if token exists, False otherwise
+        """
+        ...
+
+    def exists_name(self, name: str) -> bool:
+        """Check if a token exists by name.
+
+        Args:
+            name: Name of the token
+
+        Returns:
+            True if token with this name exists, False otherwise
         """
         ...
 

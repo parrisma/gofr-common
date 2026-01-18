@@ -44,6 +44,7 @@ class FileTokenStore:
         self.path = Path(path) if isinstance(path, str) else path
         self.logger = logger or create_logger(name="file-token-store")
         self._store: Dict[str, TokenRecord] = {}
+        self._name_index: Dict[str, str] = {}  # name -> token_id
         self._load()
 
     def _load(self) -> None:
@@ -56,6 +57,11 @@ class FileTokenStore:
                     uuid_str: TokenRecord.from_dict(record_data)
                     for uuid_str, record_data in data.items()
                 }
+                self._name_index = {
+                    record.name: uuid_str
+                    for uuid_str, record in self._store.items()
+                    if record.name
+                }
                 self.logger.debug(
                     "Token store loaded from disk",
                     tokens_count=len(self._store),
@@ -64,8 +70,10 @@ class FileTokenStore:
             except Exception as e:
                 self.logger.error("Failed to load token store", error=str(e))
                 self._store = {}
+                self._name_index = {}
         else:
             self._store = {}
+            self._name_index = {}
             self.logger.debug("Token store initialized as empty", path=str(self.path))
 
     def _save(self) -> None:
@@ -103,7 +111,16 @@ class FileTokenStore:
             token_id: UUID string of the token
             record: TokenRecord to store
         """
+        old_record = self._store.get(token_id)
+        if old_record and old_record.name and old_record.name != record.name:
+            self._name_index.pop(old_record.name, None)
+
         self._store[token_id] = record
+
+        if record.name:
+            self._name_index[record.name] = token_id
+        elif old_record and old_record.name:
+            self._name_index.pop(old_record.name, None)
         self._save()
 
     def list_all(self) -> Dict[str, TokenRecord]:
@@ -113,6 +130,13 @@ class FileTokenStore:
             Copy of the internal dictionary
         """
         return self._store.copy()
+
+    def get_by_name(self, name: str) -> Optional[TokenRecord]:
+        """Retrieve a token record by name."""
+        token_id = self._name_index.get(name)
+        if token_id is None:
+            return None
+        return self._store.get(token_id)
 
     def exists(self, token_id: str) -> bool:
         """Check if a token exists.
@@ -124,6 +148,10 @@ class FileTokenStore:
             True if token exists, False otherwise
         """
         return token_id in self._store
+
+    def exists_name(self, name: str) -> bool:
+        """Check if a token exists by name."""
+        return name in self._name_index
 
     def reload(self) -> None:
         """Reload data from disk."""

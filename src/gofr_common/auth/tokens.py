@@ -21,6 +21,7 @@ class TokenRecord:
 
     Attributes:
         id: Unique identifier for the token (UUID)
+        name: Optional human-friendly label for the token
         groups: List of group names this token grants access to
         status: Current status - "active" or "revoked"
         created_at: When the token was created
@@ -31,6 +32,7 @@ class TokenRecord:
 
     id: UUID
     groups: List[str]
+    name: Optional[str] = None
     status: Literal["active", "revoked"] = "active"
     created_at: datetime = field(default_factory=datetime.utcnow)
     expires_at: Optional[datetime] = None
@@ -63,6 +65,7 @@ class TokenRecord:
         """Serialize token record to dictionary for JSON storage."""
         return {
             "id": str(self.id),
+            "name": self.name,
             "groups": self.groups,
             "status": self.status,
             "created_at": self.created_at.isoformat(),
@@ -83,6 +86,7 @@ class TokenRecord:
         """
         return cls(
             id=UUID(data["id"]),
+            name=data.get("name"),
             groups=data["groups"],
             status=data.get("status", "active"),
             created_at=datetime.fromisoformat(data["created_at"]),
@@ -95,6 +99,7 @@ class TokenRecord:
     def create(
         cls,
         groups: List[str],
+        name: Optional[str] = None,
         expires_at: Optional[datetime] = None,
         fingerprint: Optional[str] = None,
     ) -> TokenRecord:
@@ -110,6 +115,7 @@ class TokenRecord:
         """
         return cls(
             id=uuid4(),
+            name=name,
             groups=groups,
             status="active",
             created_at=datetime.utcnow(),

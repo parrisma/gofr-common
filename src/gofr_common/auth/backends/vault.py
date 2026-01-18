@@ -86,6 +86,25 @@ class VaultTokenStore:
             self.logger.error("Vault connection failed", error=str(e))
             raise StorageUnavailableError(f"Vault unavailable: {e}") from e
 
+    def get_by_name(self, name: str) -> Optional[TokenRecord]:
+        """Retrieve a token record by name.
+
+        Performs a linear scan over tokens. An indexed lookup can be added later
+        if needed for larger datasets.
+        """
+        try:
+            keys = self.client.list_secrets(self._tokens_path)
+            for key in keys:
+                if key.endswith("/"):
+                    continue
+                data = self.client.read_secret(self._token_path(key))
+                if data and data.get("name") == name:
+                    return TokenRecord.from_dict(data)
+            return None
+        except VaultConnectionError as e:
+            self.logger.error("Vault connection failed", error=str(e))
+            raise StorageUnavailableError(f"Vault unavailable: {e}") from e
+
     def put(self, token_id: str, record: TokenRecord) -> None:
         """Store or update a token record.
 
@@ -172,6 +191,10 @@ class VaultTokenStore:
         except VaultConnectionError as e:
             self.logger.error("Vault connection failed", error=str(e))
             raise StorageUnavailableError(f"Vault unavailable: {e}") from e
+
+    def exists_name(self, name: str) -> bool:
+        """Check if a token exists by name."""
+        return self.get_by_name(name) is not None
 
     def reload(self) -> None:
         """Reload data from Vault.

@@ -4,22 +4,80 @@
 This script provides a single entry point for all authentication management
 operations including group and token management.
 
-Usage:
-    python auth_manager.py groups list
-    python auth_manager.py groups create <name> [--description DESC]
-    python auth_manager.py groups defunct <name>
+QUICK START:
+    # Source environment first (REQUIRED):
+    cd /path/to/gofr-project
+    set -a && source lib/gofr-common/config/gofr_ports.env && \\
+             source docker/.vault-init.env && \\
+             source docker/.env && set +a
 
-    python auth_manager.py tokens list [--status active|revoked]
-    python auth_manager.py tokens create --groups admin,users [--expires SECONDS]
-    python auth_manager.py tokens revoke <token-id>
-    python auth_manager.py tokens inspect <token-string>
+    # List groups:
+    python auth_manager.py --backend vault groups list
 
-Environment Variables:
-    GOFR_AUTH_BACKEND      Storage backend: memory, file, vault (default: file)
+    # Create token for admin group (30 day expiry):
+    python auth_manager.py --backend vault tokens create --groups admin
+
+    # Create token with human-friendly name:
+    python auth_manager.py --backend vault tokens create --groups admin --name prod-api-server
+
+    # Inspect a token:
+    python auth_manager.py --backend vault tokens inspect <jwt-string>
+
+USAGE:
+    Groups:
+      auth_manager.py groups list [--include-defunct] [--format table|json]
+      auth_manager.py groups create <name> [--description DESC]
+      auth_manager.py groups defunct <name>
+
+        Tokens:
+            auth_manager.py tokens list [--status active|revoked] [--name-pattern PATTERN] [--format table|json]
+            auth_manager.py tokens create --groups group1,group2 [--name NAME] [--expires SECONDS] [--output FILE]
+            auth_manager.py tokens revoke <token-id> [--name NAME]
+            auth_manager.py tokens inspect <token-string> [--name NAME]
+
+ENVIRONMENT VARIABLES (REQUIRED):
+    GOFR_JWT_SECRET        JWT signing secret (shared across all services)
+    GOFR_AUTH_BACKEND      Storage backend: memory, file, vault
+    
+    For Vault backend (recommended):
+    GOFR_VAULT_URL         Vault server URL (e.g., http://gofr-vault:8201)
+    GOFR_VAULT_TOKEN       Vault root token
+    GOFR_VAULT_PATH_PREFIX Vault KV path prefix (default: gofr/auth)
+
+    For File backend:
     GOFR_AUTH_DATA_DIR     Directory for auth data (default: data/auth)
-    GOFR_JWT_SECRET        JWT signing secret (REQUIRED - must be set in .env)
-    GOFR_VAULT_URL         Vault server URL (if using vault backend)
-    GOFR_VAULT_TOKEN       Vault auth token (if using vault backend)
+
+EXAMPLES:
+    # List all groups with JSON output:
+    auth_manager.py --backend vault groups list --format json
+
+    # Create multi-group token valid for 7 days:
+    auth_manager.py --backend vault tokens create \
+        --groups admin,finance,reporting --expires 604800
+
+    # Create named token for production API:
+    auth_manager.py --backend vault tokens create \
+        --groups admin --name prod-api-server
+
+    # Save token to file for use in scripts:
+    auth_manager.py --backend vault tokens create \\
+        --groups public --output /tmp/public-token.jwt
+
+    # Revoke a specific token:
+    auth_manager.py --backend vault tokens revoke ec425f14-5db5-414e-9c6b-8f88ed44895e
+
+    # Revoke by name:
+    auth_manager.py --backend vault tokens revoke --name prod-api-server
+
+    # Check token validity and claims:
+    auth_manager.py --backend vault tokens inspect eyJhbGc...
+
+BACKEND SELECTION:
+    - memory: In-memory storage (testing only, not persistent)
+    - file:   JSON file storage (single instance, development)
+    - vault:  HashiCorp Vault (production, multi-instance)
+
+    Specify via --backend flag or GOFR_AUTH_BACKEND environment variable.
 """
 
 import argparse
@@ -29,6 +87,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
+import fnmatch
 
 # Try to import from installed package, fall back to local path
 try:
@@ -241,9 +300,20 @@ def cmd_groups_defunct(auth: AuthService, name: str) -> int:
 # TOKEN COMMANDS
 # ============================================================================
 
-def cmd_tokens_list(auth: AuthService, status: Optional[Literal["active", "revoked"]] = None, format: str = "table") -> int:
+def cmd_tokens_list(
+    auth: AuthService,
+    status: Optional[Literal["active", "revoked"]] = None,
+    name_pattern: Optional[str] = None,
+    format: str = "table",
+) -> int:
     """List all tokens."""
     tokens = auth.list_tokens(status=status)
+
+    if name_pattern:
+        tokens = [t for t in tokens if t.name and fnmatch.fnmatch(t.name, name_pattern)]
+
+    # Sort newest first for deterministic JSON/table ordering
+    tokens = sorted(tokens, key=lambda t: t.created_at, reverse=True)
 
     if format == "json":
         output = [t.to_dict() for t in tokens]
@@ -255,26 +325,35 @@ def cmd_tokens_list(auth: AuthService, status: Optional[Literal["active", "revok
         print("No tokens found")
         return 0
 
-    print(f"\n{'ID':<38} {'Status':<10} {'Groups':<25} {'Expires':<15}")
-    print("-" * 90)
+    print(f"\n{'Name':<22} {'ID':<38} {'Status':<10} {'Groups':<22} {'Expires':<15}")
+    print("-" * 115)
 
-    for token in sorted(tokens, key=lambda t: t.created_at, reverse=True):
+    for token in tokens:
         token_id = str(token.id)
+        name_str = token.name or ""
+        if len(name_str) > 20:
+            name_str = name_str[:19] + "…"
         status_str = token.status
         if token.is_expired and token.status == "active":
             status_str = "expired"
         groups_str = ",".join(token.groups)
-        if len(groups_str) > 23:
-            groups_str = groups_str[:20] + "..."
+        if len(groups_str) > 21:
+            groups_str = groups_str[:18] + "..."
         expires_str = format_time_remaining(token.expires_at)
 
-        print(f"{token_id:<38} {status_str:<10} {groups_str:<25} {expires_str:<15}")
+        print(f"{name_str:<22} {token_id:<38} {status_str:<10} {groups_str:<22} {expires_str:<15}")
 
     print(f"\nTotal: {len(tokens)} tokens")
     return 0
 
 
-def cmd_tokens_create(auth: AuthService, groups: str, expires: int = 2592000, output: Optional[str] = None) -> int:
+def cmd_tokens_create(
+    auth: AuthService,
+    groups: str,
+    expires: int = 2592000,
+    output: Optional[str] = None,
+    name: Optional[str] = None,
+) -> int:
     """Create a new token."""
     group_list = [g.strip() for g in groups.split(",") if g.strip()]
 
@@ -283,7 +362,7 @@ def cmd_tokens_create(auth: AuthService, groups: str, expires: int = 2592000, ou
         return 1
 
     try:
-        token = auth.create_token(groups=group_list, expires_in_seconds=expires)
+        token = auth.create_token(groups=group_list, expires_in_seconds=expires, name=name)
 
         if output:
             Path(output).parent.mkdir(parents=True, exist_ok=True)
@@ -299,8 +378,20 @@ def cmd_tokens_create(auth: AuthService, groups: str, expires: int = 2592000, ou
         return 1
 
 
-def cmd_tokens_revoke(auth: AuthService, token_id: str) -> int:
-    """Revoke a token by its ID."""
+def cmd_tokens_revoke(auth: AuthService, token_id: Optional[str], name: Optional[str]) -> int:
+    """Revoke a token by its ID or name."""
+    # Name takes precedence when provided
+    if name:
+        if auth.revoke_token_by_name(name):
+            print(f"Token '{name}' has been revoked")
+            return 0
+        print(f"ERROR: Token '{name}' not found", file=sys.stderr)
+        return 1
+
+    if not token_id:
+        print("ERROR: token_id or --name is required", file=sys.stderr)
+        return 1
+
     # First, find the token record to get its JWT
     token_record = auth.get_token_by_id(token_id)
 
@@ -330,8 +421,22 @@ def cmd_tokens_revoke(auth: AuthService, token_id: str) -> int:
         return 1
 
 
-def cmd_tokens_inspect(auth: AuthService, token_string: str) -> int:
-    """Inspect a token string (decode without verification)."""
+def cmd_tokens_inspect(auth: AuthService, token_string: Optional[str], name: Optional[str]) -> int:
+    """Inspect a token by string or by stored name."""
+    if name:
+        record = auth.get_token_by_name(name)
+        if record is None:
+            print(f"ERROR: Token '{name}' not found", file=sys.stderr)
+            return 1
+
+        print("=== Token Record (by name) ===")
+        print(json.dumps(record.to_dict(), indent=2, default=str))
+        return 0
+
+    if not token_string:
+        print("ERROR: token string or --name is required", file=sys.stderr)
+        return 1
+
     try:
         # First try to decode without verification to show claims
         unverified = jwt.decode(
@@ -359,7 +464,10 @@ def cmd_tokens_inspect(auth: AuthService, token_string: str) -> int:
                     print("\n=== Token Record ===")
                     print(f"ID: {record.id}")
                     print(f"Status: {record.status}")
+                    print(f"Name: {record.name or ''}")
                     print(f"Created: {record.created_at.isoformat()}")
+                    if record.expires_at:
+                        print(f"Expires: {record.expires_at.isoformat()}")
                     if record.fingerprint:
                         print(f"Fingerprint: {record.fingerprint[:20]}...")
         except Exception as e:
@@ -381,13 +489,40 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Unified auth management CLI for GOFR projects",
         formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+EXAMPLES:
+  List all groups:
+    %(prog)s --backend vault groups list
+
+  Create a finance group:
+    %(prog)s --backend vault groups create finance --description "Finance team"
+
+    Create named admin token (30d):
+        %(prog)s --backend vault tokens create --groups admin --name prod-api-server --expires 2592000
+
+    List tokens filtered by name pattern:
+        %(prog)s --backend vault tokens list --name-pattern "prod-*"
+
+    Revoke by name:
+        %(prog)s --backend vault tokens revoke --name prod-api-server
+
+    Inspect by name:
+        %(prog)s --backend vault tokens inspect --name prod-api-server
+
+ENVIRONMENT:
+  Required: GOFR_JWT_SECRET, GOFR_AUTH_BACKEND (or --backend)
+  Vault:    GOFR_VAULT_URL, GOFR_VAULT_TOKEN
+  File:     GOFR_AUTH_DATA_DIR
+
+For full documentation, see script header or run with --help.
+        """,
     )
 
     # Global options
     parser.add_argument(
         "--data-dir",
         default=os.environ.get("GOFR_AUTH_DATA_DIR", "data/auth"),
-        help="Directory for auth data (default: data/auth or GOFR_AUTH_DATA_DIR)",
+        help="Directory for auth data files (File backend). Default: %(default)s",
     )
     
     # Backend selection - no silent fallback to file
@@ -396,93 +531,153 @@ def main() -> int:
         "--backend",
         default=backend_from_env,
         choices=["memory", "file", "vault"],
-        help="Storage backend (set GOFR_AUTH_BACKEND env var or use --backend)",
+        help="Storage backend. Set via GOFR_AUTH_BACKEND or this flag. Required.",
     )
     parser.add_argument(
         "--verbose", "-v",
         action="store_true",
-        help="Enable verbose logging output",
+        help="Enable verbose logging output for debugging",
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Command category")
+    subparsers = parser.add_subparsers(dest="command", help="Command category", required=False)
 
     # -------------------------------------------------------------------------
     # GROUPS subcommand
     # -------------------------------------------------------------------------
-    groups_parser = subparsers.add_parser("groups", help="Group management")
-    groups_sub = groups_parser.add_subparsers(dest="subcommand", help="Group operation")
+    groups_parser = subparsers.add_parser(
+        "groups",
+        help="Manage authentication groups",
+        description="Create, list, and manage authentication groups",
+    )
+    groups_sub = groups_parser.add_subparsers(dest="subcommand", help="Group operation", required=False)
 
     # groups list
-    groups_list = groups_sub.add_parser("list", help="List all groups")
+    groups_list = groups_sub.add_parser(
+        "list",
+        help="List all groups",
+        description="Display all authentication groups with status and metadata",
+    )
     groups_list.add_argument(
         "--include-defunct",
         action="store_true",
-        help="Include defunct groups in listing",
+        help="Include defunct (soft-deleted) groups in output",
     )
     groups_list.add_argument(
         "--format",
         choices=["table", "json"],
         default="table",
-        help="Output format (default: table)",
+        help="Output format. Table for humans, JSON for scripts. Default: %(default)s",
     )
 
     # groups create
-    groups_create = groups_sub.add_parser("create", help="Create a new group")
-    groups_create.add_argument("name", help="Group name")
+    groups_create = groups_sub.add_parser(
+        "create",
+        help="Create a new group",
+        description="Create a new authentication group for access control",
+    )
+    groups_create.add_argument("name", help="Unique group name (e.g., 'finance', 'admin')")
     groups_create.add_argument(
         "--description", "-d",
-        help="Group description",
+        help="Human-readable group description",
     )
 
     # groups defunct
-    groups_defunct = groups_sub.add_parser("defunct", help="Make a group defunct")
+    groups_defunct = groups_sub.add_parser(
+        "defunct",
+        help="Make a group defunct (soft delete)",
+        description="Mark group as defunct. Preserves audit trail, prevents new tokens.",
+    )
     groups_defunct.add_argument("name", help="Group name to make defunct")
 
     # -------------------------------------------------------------------------
     # TOKENS subcommand
     # -------------------------------------------------------------------------
-    tokens_parser = subparsers.add_parser("tokens", help="Token management")
-    tokens_sub = tokens_parser.add_subparsers(dest="subcommand", help="Token operation")
+    tokens_parser = subparsers.add_parser(
+        "tokens",
+        help="Manage JWT authentication tokens",
+        description="Create, list, revoke, and inspect JWT tokens",
+    )
+    tokens_sub = tokens_parser.add_subparsers(dest="subcommand", help="Token operation", required=False)
 
     # tokens list
-    tokens_list = tokens_sub.add_parser("list", help="List all tokens")
+    tokens_list = tokens_sub.add_parser(
+        "list",
+        help="List all tokens",
+        description="Display all JWT tokens with status, groups, and expiry",
+    )
     tokens_list.add_argument(
         "--status",
         choices=["active", "revoked"],
-        help="Filter by status",
+        help="Filter by token status (omit to show all)",
+    )
+    tokens_list.add_argument(
+        "--name-pattern",
+        help="Filter by token name glob pattern (e.g., 'prod-*')",
     )
     tokens_list.add_argument(
         "--format",
         choices=["table", "json"],
         default="table",
-        help="Output format (default: table)",
+        help="Output format. Table for humans, JSON for scripts. Default: %(default)s",
     )
 
     # tokens create
-    tokens_create = tokens_sub.add_parser("create", help="Create a new token")
+    tokens_create = tokens_sub.add_parser(
+        "create",
+        help="Create a new token",
+        description="Generate a new JWT token for specified groups",
+    )
     tokens_create.add_argument(
         "--groups", "-g",
         required=True,
-        help="Comma-separated list of groups (e.g., admin,users)",
+        help="Comma-separated list of groups (e.g., 'admin,users,reporting')",
+    )
+    tokens_create.add_argument(
+        "--name",
+        help="Optional human-friendly token name (unique, lowercase, 3-64 chars)",
     )
     tokens_create.add_argument(
         "--expires", "-e",
         type=int,
         default=2592000,  # 30 days
-        help="Token expiry in seconds (default: 2592000 = 30 days)",
+        help="Token expiry in seconds. Default: %(default)s (30 days)",
     )
     tokens_create.add_argument(
         "--output", "-o",
-        help="Save token to file instead of stdout",
+        help="Save token to file (useful for scripts). If omitted, prints to stdout.",
     )
 
     # tokens revoke
-    tokens_revoke = tokens_sub.add_parser("revoke", help="Revoke a token")
-    tokens_revoke.add_argument("token_id", help="Token ID (UUID) to revoke")
+    tokens_revoke = tokens_sub.add_parser(
+        "revoke",
+        help="Revoke a token",
+        description="Immediately revoke a token by its UUID. Token becomes invalid.",
+    )
+    tokens_revoke.add_argument(
+        "token_id",
+        nargs="?",
+        help="Token UUID to revoke (from 'tokens list')",
+    )
+    tokens_revoke.add_argument(
+        "--name",
+        help="Revoke by token name (takes precedence over token_id)",
+    )
 
     # tokens inspect
-    tokens_inspect = tokens_sub.add_parser("inspect", help="Inspect a token string")
-    tokens_inspect.add_argument("token", help="JWT token string to inspect")
+    tokens_inspect = tokens_sub.add_parser(
+        "inspect",
+        help="Inspect a token string",
+        description="Decode and verify a JWT token, showing claims and validation status",
+    )
+    tokens_inspect.add_argument(
+        "token",
+        nargs="?",
+        help="Full JWT string (eyJhbG...)",
+    )
+    tokens_inspect.add_argument(
+        "--name",
+        help="Inspect by token name (shows stored record)",
+    )
 
     args = parser.parse_args()
 
@@ -520,13 +715,13 @@ def main() -> int:
 
     elif args.command == "tokens":
         if args.subcommand == "list":
-            return cmd_tokens_list(auth, args.status, args.format)
+            return cmd_tokens_list(auth, args.status, args.name_pattern, args.format)
         elif args.subcommand == "create":
-            return cmd_tokens_create(auth, args.groups, args.expires, args.output)
+            return cmd_tokens_create(auth, args.groups, args.expires, args.output, args.name)
         elif args.subcommand == "revoke":
-            return cmd_tokens_revoke(auth, args.token_id)
+            return cmd_tokens_revoke(auth, args.token_id, args.name)
         elif args.subcommand == "inspect":
-            return cmd_tokens_inspect(auth, args.token)
+            return cmd_tokens_inspect(auth, args.token, args.name)
 
     return 0
 

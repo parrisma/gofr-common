@@ -30,6 +30,7 @@ class MemoryTokenStore:
     def __init__(self) -> None:
         """Initialize empty in-memory store."""
         self._store: Dict[str, TokenRecord] = {}
+        self._name_index: Dict[str, str] = {}  # name -> token_id
 
     def get(self, token_id: str) -> Optional[TokenRecord]:
         """Retrieve a token record by ID.
@@ -42,6 +43,13 @@ class MemoryTokenStore:
         """
         return self._store.get(token_id)
 
+    def get_by_name(self, name: str) -> Optional[TokenRecord]:
+        """Retrieve a token by its name."""
+        token_id = self._name_index.get(name)
+        if token_id is None:
+            return None
+        return self._store.get(token_id)
+
     def put(self, token_id: str, record: TokenRecord) -> None:
         """Store or update a token record.
 
@@ -49,7 +57,17 @@ class MemoryTokenStore:
             token_id: UUID string of the token
             record: TokenRecord to store
         """
+        old_record = self._store.get(token_id)
+        if old_record and old_record.name and old_record.name != record.name:
+            self._name_index.pop(old_record.name, None)
+
         self._store[token_id] = record
+
+        if record.name:
+            self._name_index[record.name] = token_id
+        elif old_record and old_record.name:
+            # Drop name when updating to a nameless record
+            self._name_index.pop(old_record.name, None)
 
     def list_all(self) -> Dict[str, TokenRecord]:
         """List all token records.
@@ -70,6 +88,10 @@ class MemoryTokenStore:
         """
         return token_id in self._store
 
+    def exists_name(self, name: str) -> bool:
+        """Check if a token exists by name."""
+        return name in self._name_index
+
     def reload(self) -> None:
         """No-op for in-memory store."""
         pass
@@ -80,6 +102,7 @@ class MemoryTokenStore:
         Useful for test cleanup.
         """
         self._store.clear()
+        self._name_index.clear()
 
     def __len__(self) -> int:
         """Return number of tokens in store."""

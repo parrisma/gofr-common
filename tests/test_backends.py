@@ -44,9 +44,11 @@ class TestTokenStoreProtocol:
     def test_protocol_has_required_methods(self):
         """TokenStore protocol defines all required methods."""
         assert hasattr(TokenStore, "get")
+        assert hasattr(TokenStore, "get_by_name")
         assert hasattr(TokenStore, "put")
         assert hasattr(TokenStore, "list_all")
         assert hasattr(TokenStore, "exists")
+        assert hasattr(TokenStore, "exists_name")
         assert hasattr(TokenStore, "reload")
 
 
@@ -140,6 +142,48 @@ class TestMemoryTokenStore:
     def test_exists_false(self, store):
         """exists() returns False for nonexistent token."""
         assert store.exists("nonexistent-uuid") is False
+
+    def test_get_by_name(self, store):
+        """Can retrieve a token by its name."""
+        record = TokenRecord.create(groups=["admin"], name="deploy-token")
+        store.put(str(record.id), record)
+
+        retrieved = store.get_by_name("deploy-token")
+        assert retrieved is not None
+        assert retrieved.id == record.id
+
+    def test_get_by_name_nonexistent(self, store):
+        """get_by_name() returns None when name is missing."""
+        assert store.get_by_name("missing") is None
+
+    def test_exists_name(self, store):
+        """exists_name() checks presence by name."""
+        record = TokenRecord.create(groups=["admin"], name="ci")
+        store.put(str(record.id), record)
+
+        assert store.exists_name("ci") is True
+        assert store.exists_name("other") is False
+
+    def test_put_updates_name_index(self, store):
+        """Updating a token moves its name index."""
+        record = TokenRecord.create(groups=["admin"], name="old")
+        token_id = str(record.id)
+        store.put(token_id, record)
+
+        updated = TokenRecord(
+            id=record.id,
+            name="new",
+            groups=record.groups,
+            status=record.status,
+            created_at=record.created_at,
+            expires_at=record.expires_at,
+        )
+        store.put(token_id, updated)
+
+        assert store.get_by_name("old") is None
+        found = store.get_by_name("new")
+        assert found is not None
+        assert found.id == record.id
 
     def test_list_all(self, store):
         """list_all() returns all stored tokens."""
@@ -468,6 +512,57 @@ class TestFileTokenStore:
 
         store.put(token_id, sample_record)
         assert store.exists(token_id) is True
+
+    def test_get_by_name(self, store):
+        """Can retrieve a token by name."""
+        record = TokenRecord.create(groups=["admin"], name="file-token")
+        store.put(str(record.id), record)
+
+        retrieved = store.get_by_name("file-token")
+        assert retrieved is not None
+        assert retrieved.id == record.id
+
+    def test_exists_name(self, store):
+        """exists_name() reflects name index."""
+        record = TokenRecord.create(groups=["admin"], name="named")
+        store.put(str(record.id), record)
+
+        assert store.exists_name("named") is True
+        assert store.exists_name("other") is False
+
+    def test_name_persists_across_instances(self, temp_path):
+        """Name index survives reloads."""
+        record = TokenRecord.create(groups=["users"], name="persistent")
+
+        store1 = FileTokenStore(temp_path)
+        store1.put(str(record.id), record)
+
+        store2 = FileTokenStore(temp_path)
+        retrieved = store2.get_by_name("persistent")
+
+        assert retrieved is not None
+        assert retrieved.id == record.id
+
+    def test_put_updates_name_index(self, store):
+        """Renaming a token updates the name index."""
+        record = TokenRecord.create(groups=["admin"], name="old")
+        token_id = str(record.id)
+        store.put(token_id, record)
+
+        updated = TokenRecord(
+            id=record.id,
+            name="new",
+            groups=record.groups,
+            status=record.status,
+            created_at=record.created_at,
+            expires_at=record.expires_at,
+        )
+        store.put(token_id, updated)
+
+        assert store.get_by_name("old") is None
+        renamed = store.get_by_name("new")
+        assert renamed is not None
+        assert renamed.id == record.id
 
     def test_nested_path(self, tmp_path, sample_record):
         """Store creates parent directories."""
@@ -1534,6 +1629,74 @@ class TestVaultTokenStoreExists:
             store.exists("some-uuid")
 
 
+class TestVaultTokenStoreGetByName:
+    """Tests for VaultTokenStore.get_by_name()."""
+
+    @pytest.fixture
+    def mock_vault_client(self):
+        """Create a mock VaultClient."""
+        return MagicMock(spec=VaultClient)
+
+    @pytest.fixture
+    def store(self, mock_vault_client):
+        """Create VaultTokenStore with mock client."""
+        from gofr_common.auth.backends import VaultTokenStore
+        return VaultTokenStore(mock_vault_client)
+
+    def test_get_by_name_finds_match(self, store, mock_vault_client):
+        """Returns matching token when name exists."""
+        token = TokenRecord.create(groups=["admin"], name="deploy")
+        mock_vault_client.list_secrets.return_value = [str(token.id)]
+        mock_vault_client.read_secret.return_value = token.to_dict()
+
+        result = store.get_by_name("deploy")
+
+        assert result is not None
+        assert result.id == token.id
+
+    def test_get_by_name_missing(self, store, mock_vault_client):
+        """Returns None when name is not found."""
+        mock_vault_client.list_secrets.return_value = []
+
+        assert store.get_by_name("missing") is None
+
+    def test_get_by_name_raises_on_connection_error(self, store, mock_vault_client):
+        """Raises StorageUnavailableError on Vault connection issues."""
+        mock_vault_client.list_secrets.side_effect = VaultConnectionError("Network error")
+
+        with pytest.raises(StorageUnavailableError, match="Vault unavailable"):
+            store.get_by_name("any")
+
+
+class TestVaultTokenStoreExistsName:
+    """Tests for VaultTokenStore.exists_name()."""
+
+    @pytest.fixture
+    def mock_vault_client(self):
+        """Create a mock VaultClient."""
+        return MagicMock(spec=VaultClient)
+
+    @pytest.fixture
+    def store(self, mock_vault_client):
+        """Create VaultTokenStore with mock client."""
+        from gofr_common.auth.backends import VaultTokenStore
+        return VaultTokenStore(mock_vault_client)
+
+    def test_exists_name_true(self, store, mock_vault_client):
+        """exists_name() delegates to get_by_name()."""
+        token = TokenRecord.create(groups=["admin"], name="ci")
+        mock_vault_client.list_secrets.return_value = [str(token.id)]
+        mock_vault_client.read_secret.return_value = token.to_dict()
+
+        assert store.exists_name("ci") is True
+
+    def test_exists_name_false(self, store, mock_vault_client):
+        """exists_name() returns False when name is missing."""
+        mock_vault_client.list_secrets.return_value = []
+
+        assert store.exists_name("none") is False
+
+
 class TestVaultTokenStoreReload:
     """Tests for VaultTokenStore.reload()."""
 
@@ -1656,9 +1819,11 @@ class TestVaultTokenStoreProtocolCompliance:
         store = VaultTokenStore(mock_vault_client)
 
         assert hasattr(store, "get")
+        assert hasattr(store, "get_by_name")
         assert hasattr(store, "put")
         assert hasattr(store, "list_all")
         assert hasattr(store, "exists")
+        assert hasattr(store, "exists_name")
         assert hasattr(store, "reload")
 
 

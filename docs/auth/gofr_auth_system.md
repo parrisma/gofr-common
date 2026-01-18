@@ -22,7 +22,7 @@ The system is composed of several key layers:
 
 *   **`TokenRecord`**: The server-side representation of a token.
     *   Keyed by UUID (`jti`).
-    *   Stores: `groups`, `status` ("active"/"revoked"), `created_at`, `expires_at`, `revoked_at`, `fingerprint`.
+    *   Stores: `groups`, `status` ("active"/"revoked"), `created_at`, `expires_at`, `revoked_at`, `fingerprint`, `name` (optional, server-side only).
 *   **`Group`**: Represents a permission scope or content source.
     *   Keyed by UUID.
     *   Stores: `name` (unique), `description`, `is_active`, `defunct_at`, `is_reserved`.
@@ -109,6 +109,31 @@ token = auth_service.create_token(
 print(f"Generated Token: {token}")
 ```
 
+### 3.4 Optional Token Naming
+
+Token names are human-friendly aliases (e.g., `prod-api-server`) stored server-side alongside the UUID `jti`. They are optional and never embedded in the JWT payload.
+
+*   **Format:** lowercase DNS-like, `[a-z0-9-]+`, 3-64 chars, no leading/trailing hyphen.
+*   **Uniqueness:** Scoped to the workspace; conflicts are rejected.
+*   **Immutability:** Names cannot be changed after creation; issue a new token instead.
+
+Service examples:
+
+```python
+# Create a named token
+token = auth_service.create_token(
+    groups=["admin"],
+    expires_in_seconds=86400 * 30,
+    name="prod-api-server",
+)
+
+# Lookup by name (returns TokenRecord or None)
+record = auth_service.get_token_by_name("prod-api-server")
+
+# Revoke by name (True if revoked, False if missing)
+auth_service.revoke_token_by_name("prod-api-server")
+```
+
 ## 4. Configuration Reference
 
 The system is configured primarily via environment variables. Replace `{PREFIX}` with your project prefix (e.g., `GOFR_DIG`, `GOFR_IQ`).
@@ -142,14 +167,26 @@ python scripts/auth_manager.py groups defunct finance
 # List all tokens
 python scripts/auth_manager.py tokens list
 
+# List tokens by name pattern (glob)
+python scripts/auth_manager.py tokens list --name-pattern "prod-*"
+
 # Create a new token
 python scripts/auth_manager.py tokens create --groups admin,finance --expires 86400
+
+# Create a named token
+python scripts/auth_manager.py tokens create --groups admin --name prod-api-server
 
 # Revoke a token
 python scripts/auth_manager.py tokens revoke <token-id>
 
+# Revoke by name
+python scripts/auth_manager.py tokens revoke --name prod-api-server
+
 # Inspect a token string
 python scripts/auth_manager.py tokens inspect <token-string>
+
+# Inspect by name (shows stored record)
+python scripts/auth_manager.py tokens inspect --name prod-api-server
 ```
 
 ### Environment Variables for CLI
@@ -157,6 +194,13 @@ python scripts/auth_manager.py tokens inspect <token-string>
 *   `GOFR_AUTH_BACKEND`: Storage backend (`file`, `memory`, `vault`)
 *   `GOFR_AUTH_DATA_DIR`: Directory for auth data (default: `data/auth`)
 *   `GOFR_JWT_SECRET`: JWT signing secret
+
+### Named Tokens (CLI quick reference)
+
+* Create with `--name` (optional, unique, lowercase DNS-like): `tokens create --groups admin --name prod-api-server`.
+* List shows `Name` column; filter with `--name-pattern "prod-*"`; JSON output includes `name`.
+* Revoke or inspect by name via `--name`; UUID flows continue to work.
+* Names are server-side only; JWT payload stays unchanged.
 
 ## 6. Migration from Legacy Version
 
@@ -166,6 +210,15 @@ If upgrading from the old single-group auth system:
 2.  **Update Checks:** Replace `token.group == "x"` with `token.has_group("x")`.
 3.  **Migrate Data:** The storage format has changed (JWT key vs UUID key). Old tokens are incompatible. You must issue new tokens.
 4.  **Bootstrap:** Ensure `init_auth.py` is run or `GroupRegistry` is initialized to create the `admin` and `public` groups.
+
+**Token naming migration:** Optional, non-breaking. Existing tokens continue working without names. Adopt naming gradually by issuing named replacements for long-lived or critical tokens, then revoke the unnamed predecessors.
+
+**Recommended rollout for names (non-breaking):**
+1. Inventory long-lived or critical tokens (ops, CI/CD, batch jobs).
+2. Issue named replacements using `tokens create --name <env-service-purpose> --groups ...`.
+3. Swap secrets in dependent services, then revoke the unnamed predecessors via `tokens revoke --name ...`.
+4. Reserve sensitive prefixes (e.g., `prod-*`, `admin-*`) via process/policy to reduce collision risk.
+5. Keep unnamed short-lived tokens as-is; naming is optional and backward compatible.
 
 ## 7. Developer Cheatsheet
 

@@ -192,6 +192,7 @@ class TestAuthManagerCLI:
         assert len(data) >= 1
         assert "id" in data[0]
         assert "groups" in data[0]
+        assert "name" in data[0]
 
     def test_tokens_list_filter_by_status(self, tmp_path):
         """'tokens list --status' filters correctly."""
@@ -238,6 +239,38 @@ class TestAuthManagerCLI:
 
         assert result.returncode == 0
         assert "revoked" in result.stdout.lower()
+
+    def test_tokens_create_with_name_and_list(self, tmp_path):
+        """Creating with --name surfaces name in list/JSON and filters by pattern."""
+        run_cli(["tokens", "create", "--groups", "admin", "--name", "dev-api"], data_dir=tmp_path)
+
+        table = run_cli(["tokens", "list"], data_dir=tmp_path)
+        assert table.returncode == 0
+        assert "dev-api" in table.stdout
+
+        json_result = run_cli(["tokens", "list", "--format", "json"], data_dir=tmp_path)
+        tokens = json.loads(json_result.stdout)
+        assert tokens[0].get("name") == "dev-api"
+
+        filtered = run_cli(["tokens", "list", "--name-pattern", "dev-*"] , data_dir=tmp_path)
+        assert filtered.returncode == 0
+        assert "dev-api" in filtered.stdout
+
+    def test_tokens_revoke_by_name(self, tmp_path):
+        """Revoke works by name without needing UUID."""
+        run_cli(["tokens", "create", "--groups", "admin", "--name", "dev-admin"], data_dir=tmp_path)
+
+        result = run_cli(["tokens", "revoke", "--name", "dev-admin"], data_dir=tmp_path)
+        assert result.returncode == 0
+        assert "revoked" in result.stdout.lower()
+
+    def test_tokens_inspect_by_name(self, tmp_path):
+        """Inspect by name returns stored record JSON."""
+        run_cli(["tokens", "create", "--groups", "admin", "--name", "prod-api-server"], data_dir=tmp_path)
+
+        result = run_cli(["tokens", "inspect", "--name", "prod-api-server"], data_dir=tmp_path)
+        assert result.returncode == 0
+        assert "prod-api-server" in result.stdout
 
     def test_tokens_revoke_nonexistent_fails(self, tmp_path):
         """'tokens revoke' fails for non-existent token."""

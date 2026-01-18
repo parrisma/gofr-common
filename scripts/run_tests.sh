@@ -111,9 +111,11 @@ fi
 VAULT_SCRIPT_DIR="${PROJECT_ROOT}/docker/infra/vault"
 VAULT_CONTAINER_NAME="gofr-vault-test"
 VAULT_TEST_PORT="${GOFR_VAULT_PORT}"  # Already set to test port by gofr_set_test_ports
-VAULT_TEST_TOKEN="${GOFR_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
-TEST_NETWORK="gofr-test-net"
-DEV_CONTAINER_NAME="gofr-common-dev"
+# Always use a dedicated test-only token to avoid leaking prod/dev tokens
+VAULT_TEST_TOKEN="${GOFR_TEST_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
+TEST_NETWORK="${GOFR_TEST_NETWORK:-gofr-test-net}"
+# Connect any running dev container so in-container pytest can reach test services
+DEV_CONTAINER_NAMES=("gofr-common-dev")
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -156,13 +158,15 @@ start_vault_test_container() {
         docker network create "${TEST_NETWORK}"
     fi
     
-    # Connect dev container to test network if not already connected
-    if docker ps --format '{{.Names}}' | grep -q "^${DEV_CONTAINER_NAME}$"; then
-        if ! docker network inspect "${TEST_NETWORK}" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q "${DEV_CONTAINER_NAME}"; then
-            echo "Connecting ${DEV_CONTAINER_NAME} to ${TEST_NETWORK}..."
-            docker network connect "${TEST_NETWORK}" "${DEV_CONTAINER_NAME}" 2>/dev/null || true
+    # Connect dev containers to test network if not already connected
+    for dev_name in "${DEV_CONTAINER_NAMES[@]}"; do
+        if docker ps --format '{{.Names}}' | grep -q "^${dev_name}$"; then
+            if ! docker network inspect "${TEST_NETWORK}" --format '{{range .Containers}}{{.Name}} {{end}}' | grep -q "${dev_name}"; then
+                echo "Connecting ${dev_name} to ${TEST_NETWORK}..."
+                docker network connect "${TEST_NETWORK}" "${dev_name}" 2>/dev/null || true
+            fi
         fi
-    fi
+    done
     
     # Check if Vault image exists
     if ! docker images gofr-vault:latest --format '{{.Repository}}' | grep -q "gofr-vault"; then
@@ -183,6 +187,8 @@ start_vault_test_container() {
     fi
     
     # Start Vault using the run.sh script in test mode on test network
+    # Force the dev token for this test invocation so prod/dev env vars are ignored
+    export GOFR_VAULT_DEV_TOKEN="${VAULT_TEST_TOKEN}"
     if [ -f "${VAULT_SCRIPT_DIR}/run.sh" ]; then
         bash "${VAULT_SCRIPT_DIR}/run.sh" --test --port "${VAULT_TEST_PORT}" --name "${VAULT_CONTAINER_NAME}" --network "${TEST_NETWORK}"
     else
@@ -217,10 +223,12 @@ stop_vault_test_container() {
         echo "Vault container was not running"
     fi
     
-    # Disconnect dev container from test network (optional cleanup)
-    if docker ps --format '{{.Names}}' | grep -q "^${DEV_CONTAINER_NAME}$"; then
-        docker network disconnect "${TEST_NETWORK}" "${DEV_CONTAINER_NAME}" 2>/dev/null || true
-    fi
+    # Disconnect dev containers from test network (optional cleanup)
+    for dev_name in "${DEV_CONTAINER_NAMES[@]}"; do
+        if docker ps --format '{{.Names}}' | grep -q "^${dev_name}$"; then
+            docker network disconnect "${TEST_NETWORK}" "${dev_name}" 2>/dev/null || true
+        fi
+    done
 }
 
 # =============================================================================
