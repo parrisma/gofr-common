@@ -34,7 +34,7 @@ ENV PATH="/home/gofr-backup/.venv/bin:$PATH"
 # First copy just the requirements
 COPY --chown=gofr-backup:gofr-backup pyproject.toml /tmp/gofr-common/
 COPY --chown=gofr-backup:gofr-backup src/ /tmp/gofr-common/src/
-COPY --chown=gofr-backup:gofr-common README.md /tmp/gofr-common/
+COPY --chown=gofr-backup:gofr-common readme.md /tmp/gofr-common/
 
 # Install gofr-common
 RUN pip install --no-cache-dir /tmp/gofr-common \

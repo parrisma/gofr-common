@@ -485,7 +485,7 @@ src/gofr_common/auth/
 ├── groups.py                # Uses GroupStore protocol  
 ├── tokens.py                # Unchanged
 ├── middleware.py            # Unchanged
-├── README.md                # Updated with Vault docs
+├── readme.md                # Updated with Vault docs
 ├── spec.md                  # Original refactoring spec
 ├── vault_spec.md            # This spec
 └── backends/

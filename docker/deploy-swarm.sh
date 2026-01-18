@@ -28,6 +28,25 @@ log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Fail-fast validation for required secrets (no placeholders allowed)
+PLACEHOLDER_VALUES=("changeme" "change-this-encryption-key" "gofr-neo4j-password" "not-configured")
+require_env() {
+    local name="$1"
+    local value="${!name:-}"
+
+    if [ -z "$value" ]; then
+        log_error "$name is required and must be provided via environment or Vault"
+        exit 1
+    fi
+
+    for placeholder in "${PLACEHOLDER_VALUES[@]}"; do
+        if [ "$value" = "$placeholder" ]; then
+            log_error "$name uses placeholder value ($placeholder); provide a real secret."
+            exit 1
+        fi
+    done
+}
+
 # Parse arguments
 BUILD_IMAGES=false
 CREATE_SECRETS=false
@@ -101,13 +120,13 @@ fi
 # Create secrets if requested
 if [ "$CREATE_SECRETS" = true ]; then
     log_info "Creating Docker secrets..."
-    
+
+    require_env JWT_SECRET
+    require_env NEO4J_PASSWORD
+    require_env N8N_ENCRYPTION_KEY
+
     # JWT Secret
     if ! docker secret inspect jwt_secret >/dev/null 2>&1; then
-        if [ -z "$JWT_SECRET" ]; then
-            JWT_SECRET=$(openssl rand -base64 32)
-            log_warn "Generated random JWT_SECRET"
-        fi
         echo "$JWT_SECRET" | docker secret create jwt_secret -
         log_success "Created jwt_secret"
     else
@@ -116,8 +135,7 @@ if [ "$CREATE_SECRETS" = true ]; then
     
     # Neo4j Password
     if ! docker secret inspect neo4j_password >/dev/null 2>&1; then
-        NEO4J_PASS="${NEO4J_PASSWORD:-gofr-neo4j-password}"
-        echo "$NEO4J_PASS" | docker secret create neo4j_password -
+        echo "$NEO4J_PASSWORD" | docker secret create neo4j_password -
         log_success "Created neo4j_password"
     else
         log_info "neo4j_password already exists"
@@ -125,10 +143,6 @@ if [ "$CREATE_SECRETS" = true ]; then
     
     # N8N Encryption Key
     if ! docker secret inspect n8n_encryption_key >/dev/null 2>&1; then
-        if [ -z "$N8N_ENCRYPTION_KEY" ]; then
-            N8N_ENCRYPTION_KEY=$(openssl rand -base64 32)
-            log_warn "Generated random N8N_ENCRYPTION_KEY"
-        fi
         echo "$N8N_ENCRYPTION_KEY" | docker secret create n8n_encryption_key -
         log_success "Created n8n_encryption_key"
     else
@@ -141,9 +155,7 @@ if [ "$CREATE_SECRETS" = true ]; then
             echo "$OPENAI_API_KEY" | docker secret create openai_api_key -
             log_success "Created openai_api_key"
         else
-            # Create placeholder
-            echo "not-configured" | docker secret create openai_api_key -
-            log_warn "Created placeholder openai_api_key (set OPENAI_API_KEY env var)"
+            log_info "Skipping openai_api_key (not provided)"
         fi
     else
         log_info "openai_api_key already exists"
@@ -156,10 +168,14 @@ fi
 log_info "Deploying GOFR stack..."
 cd "$SCRIPT_DIR"
 
-# Export environment variables for compose
-export JWT_SECRET="${JWT_SECRET:-changeme}"
-export NEO4J_PASSWORD="${NEO4J_PASSWORD:-gofr-neo4j-password}"
-export N8N_ENCRYPTION_KEY="${N8N_ENCRYPTION_KEY:-change-this-encryption-key}"
+# Export environment variables for compose (fail fast if missing)
+require_env JWT_SECRET
+require_env NEO4J_PASSWORD
+require_env N8N_ENCRYPTION_KEY
+
+export JWT_SECRET
+export NEO4J_PASSWORD
+export N8N_ENCRYPTION_KEY
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-0 2 * * *}"
 export BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-7}"

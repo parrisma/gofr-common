@@ -2,12 +2,12 @@
 name = "gofr-common"
 version = "1.0.0"
 description = "Shared infrastructure library for GOFR projects (auth, logging, config, MCP utilities)"
-readme = "README.md"
+readme = "readme.md"
 license = {text = "MIT"}
 requires-python = ">=3.11"
 
 # Core dependencies shared by ALL GOFR projects
-# All versions pinned per SERVICE_COMPATIBILITY.md
+# All versions pinned per service_compatibility.md
 dependencies = [
     # MCP Protocol
     "mcp==1.23.1",
@@ -72,7 +72,7 @@ packages = ["src/gofr_common"]
 include = [
     "/src",
     "/tests",
-    "/README.md",
+    "/readme.md",
     "/LICENSE",
 ]
 

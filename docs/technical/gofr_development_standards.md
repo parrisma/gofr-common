@@ -90,7 +90,7 @@ We enforce a consolidated standard for VS Code configuration to ensure consisten
 ### `launch.json` (Debugging)
 
 * **Standard**: All projects must use the standardized launch configurations for running tests, debugging MCP/Web servers (with/without auth), and utility scripts.
-* **Reference**: See **[VSCODE_LAUNCH_STANDARDS.md](VSCODE_LAUNCH_STANDARDS.md)** for the mandatory template and port mappings.
+* **Reference**: See **[vscode_launch_standards.md](vscode_launch_standards.md)** for the mandatory template and port mappings.
 
 ### `settings.json` (Workspace Settings)
 
@@ -125,7 +125,7 @@ project-name/
 ├── scripts/            # STANDARD SCRIPTS (run_tests.sh, etc.)
 ├── tests/              # Pytest tests
 ├── pyproject.toml      # Dependencies (includes gofr-common)
-└── README.md
+└── readme.md
 ```
 
 ---

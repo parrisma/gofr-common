@@ -16,11 +16,11 @@ This package provides common functionality shared across all GOFR microservices:
 
 | Topic | Description |
 |-------|-------------|
-| [**Authentication**](docs/GOFR_AUTH_SYSTEM.md) | JWT-based auth system, group management, and Vault integration. |
-| [**Backup System**](docs/BACKUP.md) | Automated backup infrastructure, retention policies, and verification. |
-| [**Port Standards**](docs/PORT_STANDARDIZATION.md) | Standardized port allocation strategy for all services. |
-| [**Dev Standards**](docs/GOFR_DEVELOPMENT_STANDARDS.md) | Coding style, testing requirements, and project structure. |
-| [**VS Code**](docs/VSCODE_LAUNCH_STANDARDS.md) | Debugging configurations and launch profiles. |
+| [**Authentication**](docs/auth/gofr_auth_system.md) | JWT-based auth system, group management, and Vault integration. |
+| [**Backup System**](docs/backup/backup.md) | Automated backup infrastructure, retention policies, and verification. |
+| [**Port Standards**](docs/config/port_standardization.md) | Standardized port allocation strategy for all services. |
+| [**Dev Standards**](docs/technical/gofr_development_standards.md) | Coding style, testing requirements, and project structure. |
+| [**VS Code**](docs/technical/vscode_launch_standards.md) | Debugging configurations and launch profiles. |
 
 ## Components
 
