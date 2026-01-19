@@ -96,6 +96,14 @@ while [[ $# -gt 0 ]]; do
             echo "    --kill-all, --stop  Stop all servers without restarting"
             echo "    --help              Show this help message"
             echo ""
+            echo "REQUIREMENTS:"
+            echo "  - Docker must be running (for --prod mode)"
+            echo "  - uv must be installed (for --dev mode)"
+            echo "  - Infrastructure must be running (Vault, Neo4j, ChromaDB)"
+            echo "  - Secrets must be available (load via auth_env.sh for --dev)"
+            echo ""
+            echo "This is a shared script called by project-specific wrappers."
+            echo "Use project wrapper instead: scripts/manage_servers.sh"
             echo "Environment variables should be set by the project wrapper script."
             exit 0
             ;;

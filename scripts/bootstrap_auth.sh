@@ -35,6 +35,17 @@
 #   # Use with eval for current shell
 #   eval "$(./bootstrap_auth.sh --prefix GOFR --docker)"
 #
+# REQUIREMENTS:
+#   - Vault must be running and unsealed
+#   - GOFR_JWT_SECRET must be set (loaded from Vault or .env)
+#   - GOFR_VAULT_TOKEN must be set (root or admin token)
+#   - gofr_ports.env must exist (for port configuration)
+#
+#   For production setup, this is called automatically by docker/start-prod.sh
+#   For manual setup, use auth_env.sh to load required secrets first:
+#     source lib/gofr-common/scripts/auth_env.sh --docker
+#     ./bootstrap_auth.sh --docker
+#
 # Environment Variables (can be set before running):
 #   GOFR_AUTH_PREFIX       Default prefix if --prefix not specified
 #   GOFR_VAULT_URL         Vault server URL (overrides auto-detection)

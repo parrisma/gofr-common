@@ -4,29 +4,26 @@
 # =============================================================================
 # Wrapper for auth_manager.py that handles SSOT environment configuration.
 #
-# USAGE:
-#   # From gofr-iq workspace (recommended - uses SSOT):
-#   cd /path/to/gofr-iq
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker <command> [args...]
-#
-#   # Examples:
+# RECOMMENDED USAGE:
+#   # Simplest: use auth_env.sh to load secrets, then run this script
+#   source <(./lib/gofr-common/scripts/auth_env.sh --docker)
 #   ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker tokens create --groups admin --name dev-api
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list --format json
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker tokens revoke --name dev-api
+#   ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list
 #
-# OPTIONS:
-#   --docker          Use Docker hostnames (gofr-vault). Required in dev container.
-#   --backend TYPE    Override backend (vault, file, memory). Default: vault
-#   --help, -h        Show this help
+# LEGACY USAGE:
+#   # From gofr-iq workspace (GOFR_JWT_SECRET required in env):
+#   cd /path/to/gofr-iq
+#   export GOFR_JWT_SECRET=$(vault kv get -field=value secret/gofr/config/jwt-signing-secret)
+#   ./lib/gofr-common/scripts/auth_manager.sh --docker <command> [args...]
 #
 # SSOT PATTERN:
 #   This script automatically sources:
 #   1. lib/gofr-common/config/gofr_ports.env  (ports)
-#   2. docker/.vault-init.env                 (VAULT_TOKEN)
+#   2. secrets/vault_root_token               (VAULT_TOKEN via Zero-Trust Bootstrap)
 #   3. docker/.env                            (JWT_SECRET, NEO4J_PASSWORD, etc)
 #
-#   No manual environment setup needed!
+#   For the simplest flow, use auth_env.sh first:
+#   source <(./lib/gofr-common/scripts/auth_env.sh --docker)
 #
 # COMMANDS:
 #   See: python lib/gofr-common/scripts/auth_manager.py --help
@@ -62,25 +59,34 @@ OPTIONS:
   --help, -h        Show this help
 
 EXAMPLES:
+  # Recommended: use auth_env.sh first (one-liner)
+  source <(./lib/gofr-common/scripts/auth_env.sh --docker) && \\
+    ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
+
   # List groups:
-  auth_manager.sh --docker groups list
+  ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
+
+  # List tokens:
+  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list
 
   # Create admin token:
-  auth_manager.sh --docker tokens create --groups admin --name dev-api
+  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens create --groups admin --name dev-api
 
   # List tokens filtered by name pattern:
-  auth_manager.sh --docker tokens list --name-pattern "prod-*"
+  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list --name-pattern "prod-*"
 
   # Inspect token:
-  auth_manager.sh --docker tokens inspect eyJhbGc...
+  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens inspect eyJhbGc...
 
   # Inspect by name:
-  auth_manager.sh --docker tokens inspect --name dev-api
+  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens inspect --name dev-api
 
-ENVIRONMENT (auto-sourced via SSOT):
-  - lib/gofr-common/config/gofr_ports.env   (all ports)
-  - docker/.vault-init.env                  (VAULT_TOKEN, VAULT_UNSEAL_KEY)
-  - docker/.env                             (GOFR_JWT_SECRET, passwords, etc)
+ENVIRONMENT:
+  Recommended: source <(./lib/gofr-common/scripts/auth_env.sh --docker) first.
+  This auto-loads:
+    - VAULT_ADDR (with --docker, uses gofr-vault hostname)
+    - VAULT_TOKEN (short-lived operator token, not root)
+    - GOFR_JWT_SECRET (loaded from Vault)
 
 For full command reference, run:
   python lib/gofr-common/scripts/auth_manager.py --help
@@ -101,7 +107,7 @@ WORKSPACE_ROOT="$(cd "${COMMON_DIR}/../.." && pwd)"
 
 # Source SSOT files in correct order
 PORTS_ENV="${COMMON_DIR}/config/gofr_ports.env"
-VAULT_INIT="${WORKSPACE_ROOT}/docker/.vault-init.env"
+SECRETS_DIR="${WORKSPACE_ROOT}/secrets"
 DOCKER_ENV="${WORKSPACE_ROOT}/docker/.env"
 
 if [[ ! -f "${PORTS_ENV}" ]]; then
@@ -119,9 +125,13 @@ fi
 # Source SSOT files
 set -a
 source "${PORTS_ENV}"
-[[ -f "${VAULT_INIT}" ]] && source "${VAULT_INIT}"
 source "${DOCKER_ENV}"
 set +a
+
+# Load Vault credentials from secrets/ directory (Zero-Trust Bootstrap)
+if [[ -f "${SECRETS_DIR}/vault_root_token" ]]; then
+    export VAULT_TOKEN=$(cat "${SECRETS_DIR}/vault_root_token")
+fi
 
 # Configure Vault URL based on --docker flag
 if [[ "${USE_DOCKER}" == true ]]; then
@@ -133,8 +143,15 @@ fi
 # Set backend
 export GOFR_AUTH_BACKEND="${BACKEND}"
 
-# Ensure VAULT_TOKEN is set (prefer VAULT_ROOT_TOKEN from docker/.env)
-export GOFR_VAULT_TOKEN="${VAULT_ROOT_TOKEN:-${VAULT_TOKEN:-}}"
+# ZERO-TRUST BOOTSTRAP: VAULT_TOKEN must be explicitly loaded from secrets/ by caller
+# No fallbacks - fail if not set
+if [ -z "${VAULT_TOKEN:-}" ]; then
+    echo "❌ ERROR: VAULT_TOKEN not set" >&2
+    echo "   Load from: secrets/vault_root_token" >&2
+    echo "   Example: export VAULT_TOKEN=\$(cat secrets/vault_root_token)" >&2
+    exit 1
+fi
+export GOFR_VAULT_TOKEN="${VAULT_TOKEN}"
 
 # Display configuration
 echo "=== Auth Manager Configuration ===" >&2

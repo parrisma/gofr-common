@@ -22,6 +22,15 @@
 #   ./scripts/run_tests.sh --unit                  # Run unit tests only
 #   ./scripts/run_tests.sh --vault                 # Start Vault for integration tests
 #   ./scripts/run_tests.sh --cleanup-only          # Clean environment only
+#
+# REQUIREMENTS:
+#   - Python virtual environment (.venv) or uv installed
+#   - Docker running (for --docker or --vault options)
+#   - gofr_ports.env must exist (for port configuration)
+#   - For integration tests: Vault/Neo4j/ChromaDB running or use --vault flag
+#
+#   Unit tests (--unit) have no external dependencies.
+#   Integration tests may require infrastructure or use ephemeral Vault (--vault).
 # =============================================================================
 
 set -euo pipefail  # Exit on error, undefined vars, pipe failures

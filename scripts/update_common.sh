@@ -58,6 +58,15 @@ while [[ $# -gt 0 ]]; do
             echo "  --commit    Update and commit the submodule change"
             echo "  --status    Just show current submodule status"
             echo "  --help, -h  Show this help message"
+            echo ""
+            echo "REQUIREMENTS:"
+            echo "  - Must be run from a project with gofr-common as a submodule"
+            echo "  - Git must be installed"
+            echo "  - Working directory must be clean (for --commit)"
+            echo "  - Network access to GitHub (to fetch updates)"
+            echo ""
+            echo "This script updates lib/gofr-common to the latest main branch."
+            echo "Run from project root or from lib/gofr-common/scripts/."
             exit 0
             ;;
         *)

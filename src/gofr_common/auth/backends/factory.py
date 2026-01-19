@@ -15,6 +15,7 @@ from gofr_common.logger import Logger, create_logger
 from .base import GroupStore, TokenStore
 from .file import FileGroupStore, FileTokenStore
 from .memory import MemoryGroupStore, MemoryTokenStore
+from ..identity import VaultIdentity, VaultIdentityError
 
 if TYPE_CHECKING:
     from .vault_client import VaultClient
@@ -237,11 +238,22 @@ def create_stores_from_env(
         from .vault_client import VaultClient
         from .vault_config import VaultConfig
 
-        # Create vault config from environment
-        vault_config = VaultConfig.from_env(prefix)
-
-        # Create vault client
-        vault_client = VaultClient(vault_config, logger=logger)
+        # Prefer AppRole credentials injected at /run/secrets/vault_creds
+        # to avoid relying on potentially stale/placeholder GOFR_VAULT_TOKEN
+        vault_client: VaultClient
+        env_prefix = prefix.upper().replace("-", "_")
+        if VaultIdentity.is_available():
+            try:
+                identity = VaultIdentity(
+                    vault_addr=os.environ.get(f"{env_prefix}_VAULT_URL"),
+                ).login()
+                vault_client = identity.get_client()
+            except VaultIdentityError as e:
+                raise FactoryError(f"Vault identity login failed: {e}") from e
+        else:
+            # Fall back to env-based config (token or AppRole via env vars)
+            vault_config = VaultConfig.from_env(prefix)
+            vault_client = VaultClient(vault_config, logger=logger)
 
         # Get path prefix (default to lowercase prefix)
         default_prefix = f"{prefix.lower().replace('_', '/')}/auth"
@@ -252,7 +264,6 @@ def create_stores_from_env(
 
         log.debug(
             "Using vault backend",
-            url=vault_config.url,
             path_prefix=path_prefix,
         )
 

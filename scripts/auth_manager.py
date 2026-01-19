@@ -5,11 +5,15 @@ This script provides a single entry point for all authentication management
 operations including group and token management.
 
 QUICK START:
-    # Source environment first (REQUIRED):
+    # Use the wrapper script (recommended - handles SSOT automatically):
+    cd /path/to/gofr-project
+    ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
+
+    # Or source environment manually:
     cd /path/to/gofr-project
     set -a && source lib/gofr-common/config/gofr_ports.env && \\
-             source docker/.vault-init.env && \\
              source docker/.env && set +a
+    export VAULT_TOKEN=$(cat secrets/vault_root_token)
 
     # List groups:
     python auth_manager.py --backend vault groups list
