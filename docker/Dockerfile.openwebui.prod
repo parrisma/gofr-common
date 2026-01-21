@@ -1,7 +1,8 @@
 # Production Open WebUI Dockerfile
 # Uses pinned version for stability
+# Note: Use 'main' tag (full backend+frontend), not 'main-cuda' or frontend-only variants
 
-FROM ghcr.io/open-webui/open-webui:v0.4.8
+FROM ghcr.io/open-webui/open-webui:main
 
 # Install network utilities for debugging
 USER root
