@@ -36,3 +36,12 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Secrets - NEVER commit these
+secrets/
+*.env
+
+
+# Secrets - NEVER commit these
+secrets/
+*.env

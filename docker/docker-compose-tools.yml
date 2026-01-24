@@ -23,7 +23,7 @@
 #   - openwebui: LLM Chat Interface - port ${GOFR_OPENWEBUI_PORT}
 #   - n8n:       Workflow Automation - port ${GOFR_N8N_PORT}
 
-name: gofr-tools
+name: gofr
 
 services:
   # ==========================================================================
@@ -41,6 +41,7 @@ services:
     environment:
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-}
       - WEBUI_URL=http://localhost:${GOFR_OPENWEBUI_PORT:-8083}
+      - ENABLE_SIGNUP=true
       - OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
       - ENABLE_OLLAMA_API=false
       - ENABLE_OPENAI_API=true
