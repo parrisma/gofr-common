@@ -1,23 +1,21 @@
 # Production n8n Dockerfile
 # Uses pinned version for stability
 
-FROM docker.n8n.io/n8nio/n8n:1.70.3
-
-# Install network utilities for debugging
-USER root
-RUN apk add --no-cache \
-    iputils \
-    curl \
-    wget \
-    netcat-openbsd \
-    bind-tools \
-    net-tools
+FROM docker.n8n.io/n8nio/n8n:2.3.6
 
 # Create data directories
+USER root
 RUN mkdir -p /home/node/.n8n && \
     chown -R node:node /home/node/.n8n
 
+# Install OpenRouter community node globally
+USER root
+RUN npm install -g n8n-nodes-openrouter
+
 USER node
+
+# Reset working directory
+WORKDIR /home/node
 
 # n8n will run on port 5678
 EXPOSE 5678

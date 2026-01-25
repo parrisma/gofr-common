@@ -145,10 +145,23 @@ fi
 # Step 4: Generate encryption keys if they don't exist
 log_info "Checking encryption keys..."
 
+TOOLS_ENV_FILE="${SECRETS_DIR}/tools-secrets.env"
+
+# Try to load existing keys first
+if [ -f "$TOOLS_ENV_FILE" ]; then
+    log_info "Loading secrets from $TOOLS_ENV_FILE"
+    set -a
+    source "$TOOLS_ENV_FILE"
+    set +a
+fi
+
+KEYS_UPDATED=false
+
 # WebUI Secret Key
 if [ -z "${WEBUI_SECRET_KEY:-}" ]; then
     log_info "Generating WebUI secret key..."
     export WEBUI_SECRET_KEY=$(openssl rand -hex 32)
+    KEYS_UPDATED=true
     log_success "WebUI secret key generated"
 else
     log_info "Using existing WebUI secret key"
@@ -158,9 +171,27 @@ fi
 if [ -z "${N8N_ENCRYPTION_KEY:-}" ]; then
     log_info "Generating n8n encryption key..."
     export N8N_ENCRYPTION_KEY=$(openssl rand -hex 32)
+    KEYS_UPDATED=true
     log_success "n8n encryption key generated"
 else
     log_info "Using existing n8n encryption key"
+fi
+
+# Save keys if new ones were generated
+if [ "$KEYS_UPDATED" = true ]; then
+    log_info "Saving secrets to $TOOLS_ENV_FILE..."
+    mkdir -p "$SECRETS_DIR"
+    
+    # Update or append keys
+    # Note: This is a simple append/rewrite logic. For production key rotation, use Vault.
+    cat > "$TOOLS_ENV_FILE" <<EOF
+# GOFR Tools Stack Secrets
+# Generated on $(date)
+WEBUI_SECRET_KEY=$WEBUI_SECRET_KEY
+N8N_ENCRYPTION_KEY=$N8N_ENCRYPTION_KEY
+EOF
+    chmod 600 "$TOOLS_ENV_FILE"
+    log_success "Secrets saved"
 fi
 
 # Step 5: Try to load OpenRouter API key from Vault

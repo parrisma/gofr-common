@@ -71,6 +71,7 @@ services:
     volumes:
       - gofr-n8n-data:/home/node/.n8n
       - gofr-n8n-logs:/var/log/n8n
+      - /tmp:/home/node/user_data
     environment:
       - N8N_HOST=0.0.0.0
       - N8N_PORT=5678
