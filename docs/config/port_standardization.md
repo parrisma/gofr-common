@@ -4,6 +4,10 @@
 
 All GOFR services now use a consistent port allocation strategy defined in `gofr-common/config/`.
 
+**Related:**
+- Dev environment expectations: [docs/technical/gofr_development_standards.md](lib/gofr-common/docs/technical/gofr_development_standards.md)
+- Vault and service health checks use these ports; see [docs/vault/vault_architecture.md](lib/gofr-common/docs/vault/vault_architecture.md)
+
 ## Port Allocation Strategy
 
 **Base Port Pattern**: Each service gets 3 consecutive ports starting at a base (multiple of 10)

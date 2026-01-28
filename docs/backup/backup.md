@@ -2,6 +2,11 @@
 
 Shared backup infrastructure for all GOFR microservices.
 
+**Read this first:**
+- Only need to wire backups for a project? Jump to [Quick Start](#quick-start).
+- For port/network assumptions and scripts, see [docs/technical/gofr_development_standards.md](lib/gofr-common/docs/technical/gofr_development_standards.md).
+- For service port references while adding compose entries, see [docs/config/port_standardization.md](lib/gofr-common/docs/config/port_standardization.md).
+
 ## Overview
 
 The backup system provides automated, zero-downtime backups for all GOFR projects (gofr-plot, gofr-doc, gofr-iq, gofr-np, etc.) with:

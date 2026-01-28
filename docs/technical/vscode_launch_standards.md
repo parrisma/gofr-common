@@ -2,6 +2,10 @@
 
 To ensure a consistent developer experience across all GOFR projects (`gofr-dig`, `gofr-doc`, `gofr-plot`, `gofr-np`, `gofr-iq`), we are consolidating the `.vscode/launch.json` configurations.
 
+**Related:**
+- Overall dev rules: [docs/technical/gofr_development_standards.md](lib/gofr-common/docs/technical/gofr_development_standards.md).
+- Port numbers for MCP/Web: [docs/config/port_standardization.md](lib/gofr-common/docs/config/port_standardization.md).
+
 ## The Standard Configuration
 
 Every project's `launch.json` **MUST** include the following core configurations. Copy the template below and replace the `[PLACEHOLDERS]` with project-specific values.

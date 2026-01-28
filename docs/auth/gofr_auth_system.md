@@ -2,6 +2,12 @@
 
 This document provides a comprehensive guide to the GOFR authentication system, consolidating information from source code, existing documentation, and migration guides. It is designed for both LLMs and human developers to understand, implement, and use the system effectively.
 
+**Read this first (2-minute map):**
+- Need Vault setup details? See [docs/vault/vault_architecture.md](lib/gofr-common/docs/vault/vault_architecture.md).
+- Want the naming rules and rationale? See [docs/auth/token_naming_proposal.md](lib/gofr-common/docs/auth/token_naming_proposal.md).
+- Just configure it? Jump to [Configuration Reference](#4-configuration-reference) and [CLI Management Tool](#5-cli-management-tool).
+- Only verifying a token? Use [Developer Cheatsheet](#7-developer-cheatsheet).
+
 ## 1. System Overview
 
 The GOFR authentication system is a robust, multi-group, JWT-based authentication framework designed for microservices. It moves beyond simple single-group tokens to a flexible access control model with pluggable storage backends.
@@ -479,7 +485,9 @@ See [Vault Architecture](../vault/vault_architecture.md) for:
 
 ## 8. Phased Improvement Plan
 
-This section outlines a test-driven plan to address the usability gaps identified in Section 5.
+This section is a backlog/roadmap. If you only need to run or configure auth today, you can skip to [Developer Cheatsheet](#7-developer-cheatsheet) or the Vault docs.
+
+This plan outlines a test-driven path to address the usability gaps identified in Section 5.
 
 ### Phase 1: Group Validation on Verify (High Priority)
 

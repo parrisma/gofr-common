@@ -5,6 +5,11 @@
 **Date:** 2026-01-18  
 **Version:** 1.3
 
+**TL;DR (operational):**
+- Feature shipped. Create tokens with `--name`, list with name column/patterns, revoke/inspect by name.
+- Use the live how-to in [docs/auth/gofr_auth_system.md](lib/gofr-common/docs/auth/gofr_auth_system.md#34-optional-token-naming) for day-to-day steps.
+- This doc is the rationale and design record; skip to the Migration Strategy for rollout guidance.
+
 ## Executive Summary
 
 Add optional human-readable names to JWT tokens to improve token management, auditing, and operational workflows. Names would be unique identifiers (like `prod-api-server`, `dev-admin-token`) that make it easier to identify and manage tokens without relying solely on UUIDs.

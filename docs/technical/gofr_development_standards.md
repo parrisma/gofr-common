@@ -4,6 +4,11 @@ This document outlines the mandatory development standards, architecture, and wo
 
 **Target Audience**: Developers and AI Agents (LLMs) working on the codebase.
 
+**Related references:**
+- Debug templates live in [docs/technical/vscode_launch_standards.md](lib/gofr-common/docs/technical/vscode_launch_standards.md).
+- Port allocations are summarized in [docs/config/port_standardization.md](lib/gofr-common/docs/config/port_standardization.md).
+- Auth/Vault behavior: start with [docs/auth/gofr_auth_system.md](lib/gofr-common/docs/auth/gofr_auth_system.md) and [docs/vault/vault_architecture.md](lib/gofr-common/docs/vault/vault_architecture.md).
+
 ---
 
 ## 1. Architecture Overview

@@ -4,6 +4,11 @@
 
 GOFR uses HashiCorp Vault as a centralized secrets manager and authentication backend. Vault is deployed once in `gofr-common` and consumed by all GOFR applications (gofr-iq, gofr-dig, gofr-plot, etc.).
 
+**Read this first:**
+- For auth flows and JWT storage rules, see [docs/auth/gofr_auth_system.md](lib/gofr-common/docs/auth/gofr_auth_system.md).
+- Want the minimal steps? Skim [Bootstrap Process](#bootstrap-process-zero-trust) and [Runtime Token Flow](#runtime-token-flow).
+- Troubleshooting? Jump to [Troubleshooting](#troubleshooting).
+
 ## Core Concepts
 
 ### What Vault Provides
