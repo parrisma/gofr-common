@@ -343,6 +343,140 @@ If you've lost a token JWT string, create a new one with the same groups and rev
 
 ---
 
+## 7.2 Vault Backend Deep Dive
+
+The Vault backend is the recommended storage for production deployments. This section explains the implementation details.
+
+### Backend Components
+
+The Vault backend consists of three main classes in `gofr_common/auth/backends/`:
+
+| Class | File | Purpose |
+|-------|------|---------|
+| `VaultClient` | `vault_client.py` | Low-level wrapper around `hvac` library |
+| `VaultTokenStore` | `vault.py` | Implements `TokenStore` protocol using Vault |
+| `VaultGroupStore` | `vault.py` | Implements `GroupStore` protocol using Vault |
+
+### VaultClient Usage
+
+```python
+from gofr_common.auth.backends.vault_client import VaultClient
+
+# Initialize with URL and token
+client = VaultClient(
+    vault_url="http://gofr-vault:8201",
+    vault_token="hvs.xxxxx",
+    mount_point="secret",  # KV v2 mount
+    path_prefix="gofr"     # All paths under secret/gofr/
+)
+
+# Read a secret
+jwt_secret = client.read_secret("config/jwt-signing-secret")
+# Returns: {"value": "..."}
+
+# Write a secret
+client.write_secret("config/jwt-signing-secret", {"value": new_secret})
+
+# List secrets at path
+token_uuids = client.list_secrets("auth/tokens/")
+# Returns: ["a27e5a94-...", "b38f6b05-...", ...]
+
+# Delete a secret
+client.delete_secret("auth/tokens/a27e5a94-...")
+```
+
+### VaultTokenStore Implementation
+
+The store maps token UUIDs to paths in Vault:
+
+```
+secret/gofr/auth/tokens/{uuid}
+├── id: "a27e5a94-..."
+├── name: "prod-api-server"      # Optional human-friendly name
+├── groups: ["admin", "finance"]
+├── status: "active"             # or "revoked"
+├── created_at: "2025-01-15T..."
+├── expires_at: "2026-01-15T..."
+├── revoked_at: null             # or timestamp if revoked
+└── fingerprint: "..."           # JWT header hash
+```
+
+Key behaviors:
+- **Save:** `PUT secret/data/gofr/auth/tokens/{uuid}` with full record
+- **Get:** `GET secret/data/gofr/auth/tokens/{uuid}` returns record or None
+- **List:** `LIST secret/metadata/gofr/auth/tokens/` returns all UUIDs
+- **Revoke:** Updates `status` to "revoked" and sets `revoked_at` timestamp
+
+### VaultGroupStore Implementation
+
+Groups are stored similarly:
+
+```
+secret/gofr/auth/groups/{uuid}
+├── id: "f47ac10b-..."
+├── name: "us-sales"             # Unique, used for lookups
+├── description: "US Sales Team"
+├── is_active: true              # false when defunct
+├── is_reserved: false           # true for admin/public
+├── created_at: "2025-01-15T..."
+└── defunct_at: null             # or timestamp if defunct
+```
+
+**Name → UUID Resolution:**
+Since groups are accessed by name but stored by UUID, the store maintains a lookup:
+1. On startup: Lists all groups, builds name→UUID map
+2. `get_by_name("us-sales")`: Returns UUID from cached map
+3. `save(group)`: Updates cache after write
+
+### Switching to Vault Backend
+
+To enable the Vault backend:
+
+```bash
+# Environment variables
+export GOFR_AUTH_BACKEND=vault
+export GOFR_VAULT_URL=http://gofr-vault:8201
+export GOFR_VAULT_TOKEN=hvs.xxxxx  # Or use AppRole
+export GOFR_VAULT_PATH_PREFIX=gofr/auth  # Optional
+```
+
+Or in Python:
+
+```python
+from gofr_common.auth import create_stores_from_env
+
+# Reads GOFR_{prefix}_AUTH_BACKEND and vault config from env
+token_store, group_store = create_stores_from_env(prefix="GOFR_IQ")
+```
+
+### Production: Using AppRole Instead of Token
+
+In production, services don't use static Vault tokens. Instead, they use AppRole:
+
+```python
+from gofr_common.auth.identity import VaultIdentity
+
+# Load AppRole credentials from Docker secret
+identity = VaultIdentity(creds_path="/run/secrets/vault_creds")
+identity.login()  # Exchanges role_id/secret_id for client token
+identity.start_renewal()  # Background renewal thread
+
+# Get authenticated client
+client = identity.get_client()
+token_store = VaultTokenStore(client)
+```
+
+### For Complete Vault Documentation
+
+See [Vault Architecture](../vault/vault_architecture.md) for:
+- Bootstrap process and `VaultBootstrap` class
+- AppRole provisioning via `VaultAdmin`
+- Access policies and least-privilege model
+- Runtime token flow and renewal
+- Troubleshooting guide
+
+---
+
 ## 8. Phased Improvement Plan
 
 This section outlines a test-driven plan to address the usability gaps identified in Section 5.
