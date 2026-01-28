@@ -167,6 +167,12 @@ init() {
   docker exec -e VAULT_TOKEN="${ROOT_TOKEN}" "${CONTAINER_NAME}" vault secrets enable -path=secret kv-v2 || {
     log "KV secrets engine already enabled or error occurred"
   }
+  
+  # Enable AppRole auth method
+  log "Enabling AppRole auth method..."
+  docker exec -e VAULT_TOKEN="${ROOT_TOKEN}" "${CONTAINER_NAME}" vault auth enable approle || {
+    log "AppRole auth already enabled or error occurred"
+  }
 }
 
 unseal() {

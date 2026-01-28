@@ -51,7 +51,10 @@ project_root = script_dir.parent
 sys.path.insert(0, str(project_root / "src"))
 
 from gofr_common.auth import AuthService, GroupRegistry  # noqa: E402
+from gofr_common.auth.admin import VaultAdmin  # noqa: E402
 from gofr_common.auth.backends import create_stores_from_env  # noqa: E402
+from gofr_common.auth.backends.vault_client import VaultClient  # noqa: E402
+from gofr_common.auth.backends.vault_config import VaultConfig  # noqa: E402
 from gofr_common.auth.groups import RESERVED_GROUPS  # noqa: E402
 from gofr_common.logger import create_logger  # noqa: E402
 
@@ -82,6 +85,87 @@ def log_warn(message: str, quiet: bool = False) -> None:
     """Log warning message to stderr."""
     if not quiet:
         print(f"[WARN] {message}", file=sys.stderr)
+
+
+def install_vault_policies(prefix: str, quiet: bool = False) -> bool:
+    """Install Vault policies if using Vault backend.
+    
+    Args:
+        prefix: Environment variable prefix
+        quiet: Suppress output messages
+        
+    Returns:
+        True if policies were installed or not needed, False on error
+    """
+    backend = os.environ.get(f"{prefix}_AUTH_BACKEND", "vault")
+    
+    # Only install policies for Vault backend
+    if backend != "vault":
+        return True
+        
+    log_info("Installing Vault policies...", quiet)
+    
+    try:
+        # Create Vault client
+        vault_url = os.environ.get(f"{prefix}_VAULT_URL")
+        vault_token = os.environ.get(f"{prefix}_VAULT_TOKEN")
+        
+        if not vault_url or not vault_token:
+            log_warn("Vault URL or token not set, skipping policy installation", quiet)
+            return True
+            
+        config = VaultConfig(url=vault_url, token=vault_token)
+        client = VaultClient(config)
+        admin = VaultAdmin(client)
+        
+        # Install all policies
+        admin.update_policies()
+        log_success("Vault policies installed", quiet)
+        return True
+        
+    except Exception as e:
+        log_error(f"Failed to install Vault policies: {e}")
+        return False
+
+
+def store_jwt_secret_in_vault(prefix: str, jwt_secret: str, quiet: bool = False) -> bool:
+    """Store JWT signing secret in Vault for services to read.
+    
+    Args:
+        prefix: Environment variable prefix
+        jwt_secret: The JWT secret to store
+        quiet: Suppress output messages
+        
+    Returns:
+        True if stored successfully, False on error
+    """
+    backend = os.environ.get(f"{prefix}_AUTH_BACKEND", "vault")
+    
+    # Only store in Vault backend
+    if backend != "vault":
+        return True
+        
+    log_info("Storing JWT signing secret in Vault...", quiet)
+    
+    try:
+        vault_url = os.environ.get(f"{prefix}_VAULT_URL")
+        vault_token = os.environ.get(f"{prefix}_VAULT_TOKEN")
+        
+        if not vault_url or not vault_token:
+            log_warn("Vault URL or token not set, skipping JWT secret storage", quiet)
+            return True
+            
+        config = VaultConfig(url=vault_url, token=vault_token)
+        client = VaultClient(config)
+        
+        # Store at gofr/config/jwt-signing-secret (consistent with original bootstrap.py)
+        client.write_secret("gofr/config/jwt-signing-secret", {"value": jwt_secret})
+        log_success("JWT signing secret stored in Vault", quiet)
+        return True
+        
+    except Exception as e:
+        log_error(f"Failed to store JWT secret in Vault: {e}")
+        return False
 
 
 def parse_args() -> argparse.Namespace:
@@ -382,6 +466,14 @@ def main() -> int:
     if not ensure_groups(auth_service, quiet):
         log_error("Failed to ensure all reserved groups exist")
         return 1
+
+    # Install Vault policies (for Vault backend only)
+    if not install_vault_policies(prefix, quiet):
+        log_warn("Policy installation failed, continuing anyway")
+
+    # Store JWT secret in Vault (for services to read)
+    if not store_jwt_secret_in_vault(prefix, jwt_secret, quiet):
+        log_warn("JWT secret storage failed, continuing anyway")
 
     # Create bootstrap tokens if requested
     if not args.groups_only:
