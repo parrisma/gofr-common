@@ -41,7 +41,7 @@
 #   - GOFR_VAULT_TOKEN must be set (root or admin token)
 #   - gofr_ports.env must exist (for port configuration)
 #
-#   For production setup, this is called automatically by docker/start-prod.sh
+#   For production setup, this is called automatically by scripts/start-prod.sh
 #   For manual setup, use auth_env.sh to load required secrets first:
 #     source lib/gofr-common/scripts/auth_env.sh --docker
 #     ./bootstrap_auth.sh --docker

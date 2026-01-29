@@ -650,7 +650,7 @@ cd lib/gofr-common/scripts
 ```bash
 cd gofr-iq
 uv run scripts/setup_approle.py  # Regenerate credentials
-./docker/start-prod.sh            # Restart services
+./scripts/start-prod.sh            # Restart services
 ```
 
 ### Test Failures with Vault Errors

@@ -476,7 +476,7 @@ if [ "$USE_DOCKER" = true ]; then
             sleep 2
         else
             echo -e "${RED}Container ${CONTAINER_NAME} does not exist.${NC}"
-            echo "Run: ./docker/run-dev.sh to create it"
+            echo "Run: ./scripts/run-dev.sh to create it"
             exit 1
         fi
     fi

@@ -118,7 +118,7 @@ fi
 
 if [[ ! -f "${DOCKER_ENV}" ]]; then
     echo "ERROR: Docker .env not found: ${DOCKER_ENV}" >&2
-    echo "Run: ./docker/start-prod.sh --fresh" >&2
+    echo "Run: ./scripts/start-prod.sh --fresh" >&2
     exit 1
 fi
 
