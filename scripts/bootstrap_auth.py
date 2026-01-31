@@ -505,6 +505,29 @@ def main() -> int:
                 var_name = f"{prefix}_{group_name.upper()}_TOKEN"
                 print(f"{var_name}={token}")
 
+            # Save tokens to SSOT file (secrets/bootstrap_tokens.json)
+            secrets_dir = Path(__file__).parent.parent / "secrets"
+            secrets_dir.mkdir(parents=True, exist_ok=True)
+            tokens_file = secrets_dir / "bootstrap_tokens.json"
+            tokens_data = {
+                "admin_token": tokens.get("admin", ""),
+                "public_token": tokens.get("public", ""),
+            }
+            # Merge with existing tokens if file exists (preserve tokens we didn't regenerate)
+            if tokens_file.exists():
+                try:
+                    import json
+                    existing = json.loads(tokens_file.read_text())
+                    for key in ["admin_token", "public_token"]:
+                        if not tokens_data.get(key) and existing.get(key):
+                            tokens_data[key] = existing[key]
+                except Exception:
+                    pass
+            import json
+            tokens_file.write_text(json.dumps(tokens_data, indent=2))
+            tokens_file.chmod(0o600)
+            log_success(f"Tokens saved to {tokens_file}", quiet)
+
             log_info("", quiet)
             log_info("To use these tokens:", quiet)
             log_info(f"  eval \"$(python {Path(__file__).name} --prefix {prefix})\"", quiet)

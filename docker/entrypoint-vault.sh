@@ -2,7 +2,7 @@
 # Vault Entrypoint for GOFR shared infrastructure
 # Starts Vault in production mode with file storage
 
-set -e
+set -eu
 
 # Colors
 GREEN='\033[0;32m'
@@ -11,19 +11,20 @@ BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-log_info() { echo "${BLUE}[VAULT]${NC} $1"; }
-log_success() { echo "${GREEN}[VAULT]${NC} $1"; }
-log_warn() { echo "${YELLOW}[VAULT]${NC} $1"; }
-log_error() { echo "${RED}[VAULT]${NC} $1"; }
+timestamp() { date "+%Y-%m-%d %H:%M:%S"; }
+log_info() { printf "%s[VAULT]%s [%s] %s\n" "${BLUE}" "${NC}" "$(timestamp)" "$1"; }
+log_success() { printf "%s[VAULT]%s [%s] %s\n" "${GREEN}" "${NC}" "$(timestamp)" "$1"; }
+log_warn() { printf "%s[VAULT]%s [%s] %s\n" "${YELLOW}" "${NC}" "$(timestamp)" "$1"; }
+log_error() { printf "%s[VAULT]%s [%s] %s\n" "${RED}" "${NC}" "$(timestamp)" "$1" >&2; }
 
 main() {
-    echo "======================================================================="
-    echo "GOFR Shared Vault - Production Mode"
-    echo "======================================================================="
-    echo "Storage:    File-based (/vault/data)"
-    echo "Listen:     ${VAULT_ADDR}"
-    echo "Config:     /vault/config/vault.hcl"
-    echo "======================================================================="
+    log_info "======================================================================="
+    log_info "GOFR Shared Vault - Production Mode"
+    log_info "======================================================================="
+    log_info "Storage:    File-based (/vault/data)"
+    log_info "Listen:     ${VAULT_ADDR:-http://0.0.0.0:8201}"
+    log_info "Config:     /vault/config/vault.hcl"
+    log_info "======================================================================="
     
     if [ ! -f "/vault/data/vault.db" ]; then
         log_warn "Fresh install detected - Vault needs initialization"

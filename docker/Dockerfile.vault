@@ -16,8 +16,7 @@ LABEL org.opencontainers.image.created="${BUILD_DATE}" \
 
 # Copy configuration and entrypoint into image (no bind mount issues)
 COPY docker/vault-config.hcl /vault/config/vault.hcl
-COPY docker/entrypoint-vault.sh /entrypoint-vault.sh
-RUN chmod +x /entrypoint-vault.sh
+COPY --chmod=755 docker/entrypoint-vault.sh /entrypoint-vault.sh
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=3 \
