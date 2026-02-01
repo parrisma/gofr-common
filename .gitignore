@@ -1,47 +1,211 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[cod]
+*.py[codz]
 *$py.class
 
-# Virtual environments
-.venv/
-venv/
-ENV/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# C extensions
+*.so
 
 # Distribution / packaging
-dist/
+.Python
 build/
-*.egg-info/
+develop-eggs/
+dist/
+downloads/
+eggs/
 .eggs/
+lib/*
+!lib/gofr-common/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Test / Coverage
-.pytest_cache/
-.coverage
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
 htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
 coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
 
-# Logs
-logs/
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
 *.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
 
-# Data
-data/
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.envrc
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# GOFR-specific environment files with secrets
+*.env
+!lib/gofr-common/config/gofr_ports.env
+!lib/gofr-common/docker/gofr-swarm.env
+!lib/gofr-common/src/gofr_common/config/gofr_ports.env
+simulation/.env.*
+!docker/.env.example
+!docker/.vault-init.env.example
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Secrets - NEVER commit these
-secrets/
-*.env
+# Ruff stuff
+.ruff_cache/
 
+# PyPI configuration file
+.pypirc
 
-# Secrets - NEVER commit these
-secrets/
-*.env
+# Cursor
+.cursorignore
+.cursorindexingignore
+
+# Project specific - images (except docs)
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+!docs/**/*.png
+!docs/**/*.jpg
+!docs/**/*.svg
+
+# Temporary files
+*.tmp
+*.bak
+
+# Data storage - sessions and documents
+/data/
+
+# Test tuning artifacts
+test/tuning/live_run_*.json
+
+# Logs (keep directory structure)
+logs/*.log
+logs/*.json
+!logs/.gitkeep
+
+# Vault and secrets (NEVER commit these!)
+docker/.vault-init.env
+docker/.env
+config/.vault-init.env
+config/generated/
+**/vault-secrets.env
+**/.vault-init.env
+**/*-secrets.env
+**/*.jwt
+
+# Temporary tokens and credentials
+**/tokens.env
+tmp/tokens.env
+logs/*_tokens.json
+/secrets/

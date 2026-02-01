@@ -247,7 +247,15 @@ def create_stores_from_env(
                 identity = VaultIdentity(
                     vault_addr=os.environ.get(f"{env_prefix}_VAULT_URL"),
                 ).login()
+                # Start background token renewal to prevent expiration (AppRole tokens
+                # have 1h TTL by default). Without this, long-running services fail
+                # after the initial token expires.
+                identity.start_renewal()
                 vault_client = identity.get_client()
+                log.info(
+                    "VaultIdentity authenticated with auto-renewal enabled",
+                    vault_addr=identity.vault_addr,
+                )
             except VaultIdentityError as e:
                 raise FactoryError(f"Vault identity login failed: {e}") from e
         else:
