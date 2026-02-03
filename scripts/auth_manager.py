@@ -271,8 +271,33 @@ def cmd_groups_list(auth: AuthService, include_defunct: bool = False, format: st
 
 
 def cmd_groups_create(auth: AuthService, name: str, description: Optional[str] = None) -> int:
-    """Create a new group."""
+    """Create a new group, or restore if defunct."""
     try:
+        # Check if group already exists
+        existing = auth.groups.get_group_by_name(name)
+        
+        if existing:
+            # Group exists - check if it's defunct
+            if existing.defunct_at is not None:
+                # Restore the defunct group
+                existing.is_active = True
+                existing.defunct_at = None
+                auth.groups._store.put(str(existing.id), existing)
+                print(f"Restored defunct group: {name}")
+                print(f"  ID: {existing.id}")
+                if description and description != existing.description:
+                    existing.description = description
+                    auth.groups._store.put(str(existing.id), existing)
+                    print(f"  Updated description: {description}")
+                elif existing.description:
+                    print(f"  Description: {existing.description}")
+                return 0
+            else:
+                # Group exists and is active
+                print(f"Group '{name}' already exists (active)")
+                return 0
+        
+        # Group doesn't exist - create it
         group = auth.groups.create_group(name, description=description)
         print(f"Created group: {name}")
         print(f"  ID: {group.id}")

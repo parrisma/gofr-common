@@ -47,6 +47,7 @@ WORKSPACE_ROOT = _THIS_FILE.parent.parent.parent.parent.parent
 
 # SSOT file locations
 BOOTSTRAP_TOKENS_FILE = WORKSPACE_ROOT / "secrets" / "bootstrap_tokens.json"
+SIMULATION_TOKENS_FILE = WORKSPACE_ROOT / "simulation" / "tokens.json"
 PORTS_ENV_FILE = WORKSPACE_ROOT / "lib" / "gofr-common" / "config" / "gofr_ports.env"
 SECRETS_DIR = WORKSPACE_ROOT / "secrets"
 ROOT_TOKEN_FILE = SECRETS_DIR / "vault_root_token"
@@ -56,6 +57,7 @@ APPROLE_CREDS_PATH = "/run/secrets/vault_creds"
 
 # Cache loaded tokens
 _tokens_cache: Optional[Dict[str, str]] = None
+_simulation_tokens_cache: Optional[Dict[str, str]] = None
 # Singleton for VaultIdentity
 _vault_identity: Optional["VaultIdentity"] = None
 
@@ -87,6 +89,26 @@ def _load_tokens() -> Dict[str, str]:
         raise GofrEnvError(f"Invalid JSON in {BOOTSTRAP_TOKENS_FILE}: {e}")
 
 
+def _load_simulation_tokens() -> Dict[str, str]:
+    """Load simulation group tokens from simulation/tokens.json (cached, optional)."""
+    global _simulation_tokens_cache
+    if _simulation_tokens_cache is not None:
+        return _simulation_tokens_cache
+    
+    if not SIMULATION_TOKENS_FILE.exists():
+        _simulation_tokens_cache = {}
+        return {}
+    
+    try:
+        with open(SIMULATION_TOKENS_FILE) as f:
+            data = json.load(f)
+        _simulation_tokens_cache = data
+        return data
+    except json.JSONDecodeError:
+        _simulation_tokens_cache = {}
+        return {}
+
+
 def get_admin_token() -> str:
     """Get the admin JWT token. Use for source/group management."""
     tokens = _load_tokens()
@@ -109,26 +131,40 @@ def get_token_for_group(group: str) -> str:
     """
     Get the appropriate token for a group name.
 
-    Mappings:
-        - "admin", "group-simulation" → admin_token
-        - "public"                    → public_token
+    Token Resolution Priority:
+    1. Simulation tokens (simulation/tokens.json) - group-specific tokens
+    2. Bootstrap tokens (secrets/bootstrap_tokens.json) - admin/public
+    3. Hardcoded mappings (fallback for backwards compatibility)
+
+    Standard Mappings:
+        - "admin"            → admin_token (bootstrap)
+        - "group-simulation" → group token if available, else admin_token
+        - "public"           → public_token (bootstrap)
 
     Raises GofrEnvError if group is unknown.
     """
-    tokens = _load_tokens()
+    # Check simulation tokens first (principle of least privilege)
+    sim_tokens = _load_simulation_tokens()
+    if group in sim_tokens:
+        return sim_tokens[group]
+    
+    # Check bootstrap tokens
+    bootstrap_tokens = _load_tokens()
+    if group in bootstrap_tokens:
+        return bootstrap_tokens[group]
 
-    # Direct lookup first
-    if group in tokens:
-        return tokens[group]
-
-    # Standard mappings
-    ADMIN_GROUPS = {"admin", "group-simulation"}
+    # Fallback mappings for backwards compatibility
+    ADMIN_GROUPS = {"admin"}
     PUBLIC_GROUPS = {"public"}
+    SIMULATION_GROUPS = {"group-simulation"}
 
     if group in ADMIN_GROUPS:
         return get_admin_token()
     elif group in PUBLIC_GROUPS:
         return get_public_token()
+    elif group in SIMULATION_GROUPS:
+        # Fallback to admin if no group token exists (backwards compatibility)
+        return get_admin_token()
     else:
         raise GofrEnvError(
             f"Unknown group '{group}'. Known groups: admin, group-simulation, public"
