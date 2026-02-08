@@ -1,6 +1,6 @@
 #!/bin/bash
 # Unified Vault lifecycle helper for the shared GOFR Vault
-# Commands: start|stop|status|logs|init|unseal|env
+# Commands: start|stop|status|logs|init|unseal|env|jwt-secret|bootstrap|health
 
 set -euo pipefail
 
@@ -195,6 +195,33 @@ env_cmd() {
   [ -n "${VAULT_TOKEN:-}" ] && echo "export VAULT_TOKEN=${VAULT_TOKEN}"
 }
 
+ensure_jwt_secret() {
+  # Idempotent: create JWT signing secret in Vault if it doesn't exist
+  log "Ensuring JWT signing secret exists..."
+  
+  if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
+    err "vault_root_token not found - run init first"
+    return 1
+  fi
+  
+  local VAULT_TOKEN=$(cat "${SECRETS_DIR}/vault_root_token")
+  local JWT_PATH="secret/gofr/config/jwt-signing-secret"
+  
+  # Check if secret already exists
+  if docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN}" \
+       "${CONTAINER_NAME}" vault kv get -field=value "${JWT_PATH}" >/dev/null 2>&1; then
+    log "✓ JWT signing secret already exists"
+    return 0
+  fi
+  
+  # Generate and store new secret
+  log "Creating JWT signing secret..."
+  local JWT_SECRET=$(openssl rand -hex 32)
+  docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN}" \
+       "${CONTAINER_NAME}" vault kv put "${JWT_PATH}" value="${JWT_SECRET}" >/dev/null
+  log "✓ JWT signing secret created at ${JWT_PATH}"
+}
+
 bootstrap() {
   log "=== Full Vault Bootstrap ==="
   
@@ -224,6 +251,9 @@ bootstrap() {
       log "Vault already running"
     fi
   fi
+  
+  # Ensure JWT signing secret exists (idempotent)
+  ensure_jwt_secret
   
   # Run auth bootstrap
   log "Bootstrapping authentication (JWT, groups, tokens)..."
@@ -266,10 +296,11 @@ case "${1:-}" in
   init) start; init ;;
   unseal) unseal ;;
   env) env_cmd ;;
+  jwt-secret) ensure_jwt_secret ;;
   bootstrap) bootstrap ;;
   health) health_check ;;
   *)
-    echo "Usage: $0 {start|stop|status|logs|init|unseal|env|bootstrap|health}"
+    echo "Usage: $0 {start|stop|status|logs|init|unseal|env|jwt-secret|bootstrap|health}"
     exit 1
     ;;
 esac
