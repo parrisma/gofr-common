@@ -1618,6 +1618,7 @@ class TestVaultTokenStoreExists:
     def test_exists_false(self, store, mock_vault_client):
         """exists() returns False for nonexistent token."""
         mock_vault_client.secret_exists.return_value = False
+        mock_vault_client.read_secret.return_value = None
 
         assert store.exists("nonexistent-uuid") is False
 

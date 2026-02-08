@@ -60,8 +60,24 @@ path "secret/data/tokens/web" {
 }
 """ + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ
 
+# DIG Service Policy
+# - Read own secrets (API keys, etc)
+# - Read global config
+# - Read GOFR shared config (JWT signing)
+POLICY_DIG_READ = """
+# Read DIG-specific secrets
+path "secret/data/services/dig/*" {
+  capabilities = ["read"]
+}
+# Read specific token for this service if needed
+path "secret/data/tokens/dig" {
+  capabilities = ["read"]
+}
+""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ
+
 # Map of policy name -> HCL content
 POLICIES = {
     "gofr-mcp-policy": POLICY_MCP_READ,
     "gofr-web-policy": POLICY_WEB_READ,
+    "gofr-dig-policy": POLICY_DIG_READ,
 }

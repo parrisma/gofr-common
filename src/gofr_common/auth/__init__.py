@@ -94,20 +94,43 @@ from .groups import (
     GroupRegistryError,
     ReservedGroupError,
 )
-from .middleware import (
-    get_auth_service,
-    get_security_auditor,
-    init_auth_service,
-    optional_verify_token,
-    require_admin,
-    require_all_groups,
-    require_any_group,
-    require_group,
-    set_security_auditor,
-    verify_token,
-    verify_token_simple,
-)
-from .provider import AuthProvider, SecurityAuditorProtocol, create_auth_provider
+try:
+    from .middleware import (
+        get_auth_service,
+        get_security_auditor,
+        init_auth_service,
+        optional_verify_token,
+        require_admin,
+        require_all_groups,
+        require_any_group,
+        require_group,
+        set_security_auditor,
+        verify_token,
+        verify_token_simple,
+    )
+except ImportError:  # FastAPI is optional for CLI usage
+    def _middleware_unavailable(*_args, **_kwargs):
+        raise ImportError("fastapi is required for auth middleware")
+
+    get_auth_service = _middleware_unavailable
+    get_security_auditor = _middleware_unavailable
+    init_auth_service = _middleware_unavailable
+    optional_verify_token = _middleware_unavailable
+    require_admin = _middleware_unavailable
+    require_all_groups = _middleware_unavailable
+    require_any_group = _middleware_unavailable
+    require_group = _middleware_unavailable
+    set_security_auditor = _middleware_unavailable
+    verify_token = _middleware_unavailable
+    verify_token_simple = _middleware_unavailable
+try:
+    from .provider import AuthProvider, SecurityAuditorProtocol, create_auth_provider
+except ImportError:  # FastAPI is optional for CLI usage
+    AuthProvider = None  # type: ignore[assignment]
+    SecurityAuditorProtocol = None  # type: ignore[assignment]
+
+    def create_auth_provider(*_args, **_kwargs):
+        raise ImportError("fastapi is required for auth provider")
 from .service import AuthService
 from .token_service import TokenService
 from .tokens import TokenInfo, TokenRecord

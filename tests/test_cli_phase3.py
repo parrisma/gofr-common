@@ -41,6 +41,10 @@ def run_cli(
     run_env = os.environ.copy()
     if env:
         run_env.update(env)
+    if not run_env.get("GOFR_AUTH_BACKEND"):
+        run_env["GOFR_AUTH_BACKEND"] = "memory"
+    if not run_env.get("GOFR_JWT_SECRET"):
+        run_env["GOFR_JWT_SECRET"] = "gofr-dev-jwt-secret-shared-across-all-services"
 
     result = subprocess.run(
         cmd,

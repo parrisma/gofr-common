@@ -20,16 +20,20 @@ from gofr_common.auth import (
     optional_verify_token,
     verify_token,
 )
-from gofr_common.config import (
-    AuthSettings,
-    Config,
-    LogSettings,
-    ServerSettings,
-    Settings,
-    StorageSettings,
-    get_settings,
-    reset_settings,
-)
+try:
+    from gofr_common.config import (
+        AuthSettings,
+        Config,
+        LogSettings,
+        ServerSettings,
+        Settings,
+        StorageSettings,
+        get_settings,
+        reset_settings,
+    )
+except ImportError:
+    # Optional config imports may require extra dependencies (e.g., python-dotenv).
+    pass
 from gofr_common.exceptions import (
     ConfigurationError,
     GofrError,
@@ -46,17 +50,24 @@ from gofr_common.logger import (
     create_logger,
     get_logger,
 )
-from gofr_common.mcp import (
-    MCPResponseBuilder,
-    error_response,
-    format_validation_error,
-    json_text,
-    success_response,
-)
-from gofr_common.testing import (
-    CheckResult,
-    CodeQualityChecker,
-)
+try:
+    from gofr_common.mcp import (
+        MCPResponseBuilder,
+        error_response,
+        format_validation_error,
+        json_text,
+        success_response,
+    )
+except ImportError:
+    pass
+
+try:
+    from gofr_common.testing import (
+        CheckResult,
+        CodeQualityChecker,
+    )
+except ImportError:
+    pass
 
 __all__ = [
     "__version__",
