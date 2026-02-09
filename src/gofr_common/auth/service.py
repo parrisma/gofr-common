@@ -60,18 +60,20 @@ class AuthService:
     - Token verification with group extraction
     - Soft-delete token revocation (tokens never deleted)
     - Central group registry with reserved groups
-    - Pluggable storage backends (memory, file, vault)
+    - Pluggable storage backends (vault)
     - Optional device fingerprinting for token binding
     - Enhanced JWT claims (nbf, aud, jti)
 
     For pure JWT operations without group validation, use TokenService directly.
 
     Example:
-        from gofr_common.auth.backends import MemoryTokenStore, MemoryGroupStore
+        from gofr_common.auth.backends import VaultConfig, VaultClient, VaultGroupStore, VaultTokenStore
 
-        # Create stores
-        token_store = MemoryTokenStore()
-        group_store = MemoryGroupStore()
+        # Create Vault-backed stores
+        vault_config = VaultConfig.from_env("GOFR_DIG")
+        vault_client = VaultClient(vault_config)
+        token_store = VaultTokenStore(vault_client)
+        group_store = VaultGroupStore(vault_client)
         group_registry = GroupRegistry(store=group_store)
 
         # Create service
@@ -104,7 +106,7 @@ class AuthService:
         """Initialize the authentication service.
 
         Args:
-            token_store: TokenStore instance for token storage (memory, file, vault)
+            token_store: TokenStore instance for token storage (vault)
             group_registry: GroupRegistry instance for group management
             secret_key: Secret key for JWT signing. Falls back to {env_prefix}_JWT_SECRET
             env_prefix: Prefix for environment variables (e.g., "GOFR_DIG")

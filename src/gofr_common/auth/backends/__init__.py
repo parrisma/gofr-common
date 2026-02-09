@@ -1,32 +1,17 @@
 """Storage backends for GOFR authentication.
 
-Provides pluggable storage backends for tokens and groups:
-- MemoryTokenStore / MemoryGroupStore - In-memory storage for testing
-- FileTokenStore / FileGroupStore - File-based JSON storage
-- VaultTokenStore / VaultGroupStore - HashiCorp Vault storage (requires hvac)
+Vault is the only supported storage backend for tokens and groups.
 
 Usage:
     from gofr_common.auth.backends import (
         TokenStore,
         GroupStore,
-        MemoryTokenStore,
-        MemoryGroupStore,
-        FileTokenStore,
-        FileGroupStore,
         VaultConfig,
         VaultClient,
         create_token_store,
         create_group_store,
         create_stores_from_env,
     )
-
-    # Create in-memory stores for testing
-    token_store = MemoryTokenStore()
-    group_store = MemoryGroupStore()
-
-    # Create file-based stores for production
-    token_store = FileTokenStore(Path("/data/auth/tokens.json"))
-    group_store = FileGroupStore(Path("/data/auth/groups.json"))
 
     # Configure Vault connection
     vault_config = VaultConfig.from_env("GOFR_DIG")
@@ -44,8 +29,6 @@ from .factory import (
     create_stores_from_env,
     create_token_store,
 )
-from .file import FileGroupStore, FileTokenStore
-from .memory import MemoryGroupStore, MemoryTokenStore
 from .vault import VaultGroupStore, VaultTokenStore
 from .vault_client import (
     VaultAuthenticationError,
@@ -74,12 +57,6 @@ __all__ = [
     "VaultPermissionError",
     # Exceptions - Factory
     "FactoryError",
-    # Memory backends
-    "MemoryTokenStore",
-    "MemoryGroupStore",
-    # File backends
-    "FileTokenStore",
-    "FileGroupStore",
     # Vault
     "VaultConfig",
     "VaultClient",

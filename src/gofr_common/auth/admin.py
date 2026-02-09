@@ -5,9 +5,11 @@ Provides "God Mode" capabilities to configure Vault Auth Methods and Roles.
 Used by bootstrap and setup scripts, NOT by runtime applications.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict
+
 from .backends.vault_client import VaultClient, VaultError
 from .policies import POLICIES
+
 
 class VaultAdminError(VaultError):
     """Raised when admin operations fail."""
@@ -15,14 +17,14 @@ class VaultAdminError(VaultError):
 
 class VaultAdmin:
     """Administrator interface for Vault configuration.
-    
+
     Handles:
     - Enabling Auth Methods (AppRole)
     - Managing Policies
     - creating/Updating AppRoles
     - Generating SecretIDs
     """
-    
+
     def __init__(self, client: VaultClient):
         self.client = client
         self._hvac = client._client # Access underlying hvac client
@@ -32,12 +34,12 @@ class VaultAdmin:
         try:
             auth_methods = self._hvac.sys.list_auth_methods()
             path = f"{mount_point}/"
-            
+
             if path in auth_methods:
                 # check if it's actually approle
                 if auth_methods[path]['type'] == 'approle':
                     return
-            
+
             self._hvac.sys.enable_auth_method(
                 method_type="approle",
                 path=mount_point,
@@ -58,14 +60,14 @@ class VaultAdmin:
             raise VaultAdminError(f"Failed to update policies: {e}") from e
 
     def provision_service_role(
-        self, 
-        service_name: str, 
+        self,
+        service_name: str,
         policy_name: str,
         token_ttl: str = "1h",
         token_max_ttl: str = "24h"
     ) -> None:
         """Create or update an AppRole for a service.
-        
+
         Args:
             service_name: Name of the role (e.g. 'gofr-mcp')
             policy_name: Name of the policy to attach (e.g. 'gofr-mcp-policy')
@@ -88,7 +90,7 @@ class VaultAdmin:
 
     def generate_service_credentials(self, service_name: str) -> Dict[str, str]:
         """Generate a new SecretID and retrieve the RoleID.
-        
+
         Returns:
             Dict containing 'role_id' and 'secret_id'
         """
@@ -96,12 +98,12 @@ class VaultAdmin:
             # Get Role ID
             role_resp = self._hvac.auth.approle.read_role_id(role_name=service_name)
             role_id = role_resp['data']['role_id']
-            
+
             # Generate Secret ID
             # Note: We do not use wrapped responses here as we are writing to a secure volume
             secret_resp = self._hvac.auth.approle.generate_secret_id(role_name=service_name)
             secret_id = secret_resp['data']['secret_id']
-            
+
             return {
                 "role_id": role_id,
                 "secret_id": secret_id

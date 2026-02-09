@@ -1,34 +1,52 @@
 """Tests for gofr_common.auth module."""
 
-import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 
 from gofr_common.auth import (
     AuthService,
-    FileGroupStore,
-    FileTokenStore,
     FingerprintMismatchError,
     GroupRegistry,
     InvalidGroupError,
-    MemoryGroupStore,
-    MemoryTokenStore,
     TokenExpiredError,
     TokenInfo,
     TokenNotFoundError,
     TokenRevokedError,
     TokenValidationError,
 )
+from gofr_common.auth.backends import VaultClient, VaultConfig, VaultGroupStore, VaultTokenStore
+
+
+def _build_vault_client() -> VaultClient:
+    vault_url = os.environ.get("GOFR_VAULT_URL")
+    vault_token = os.environ.get("GOFR_VAULT_TOKEN")
+    if not vault_url or not vault_token:
+        raise RuntimeError(
+            "Vault test configuration missing. Set GOFR_VAULT_URL and GOFR_VAULT_TOKEN."
+        )
+    return VaultClient(VaultConfig(url=vault_url, token=vault_token))
+
+
+def _create_vault_stores() -> tuple[VaultTokenStore, VaultGroupStore]:
+    vault_client = _build_vault_client()
+    path_prefix = f"gofr/tests/{uuid4()}"
+    return (
+        VaultTokenStore(vault_client, path_prefix=path_prefix),
+        VaultGroupStore(vault_client, path_prefix=path_prefix),
+    )
 
 
 def create_memory_auth(secret_key: str = "test-secret", **kwargs) -> AuthService:
-    """Create an AuthService with in-memory stores for testing."""
-    token_store = MemoryTokenStore()
-    group_store = MemoryGroupStore()
+    """Create an AuthService with Vault-backed stores for testing."""
+    vault_client = _build_vault_client()
+    path_prefix = f"gofr/tests/{uuid4()}"
+    token_store = VaultTokenStore(vault_client, path_prefix=path_prefix)
+    group_store = VaultGroupStore(vault_client, path_prefix=path_prefix)
     group_registry = GroupRegistry(store=group_store)
     return AuthService(
         token_store=token_store,
@@ -39,16 +57,9 @@ def create_memory_auth(secret_key: str = "test-secret", **kwargs) -> AuthService
 
 
 def create_file_auth(tmp_path: Path, secret_key: str = "test-secret", **kwargs) -> AuthService:
-    """Create an AuthService with file-based stores for testing."""
-    token_store = FileTokenStore(str(tmp_path / "tokens.json"))
-    group_store = FileGroupStore(str(tmp_path / "groups.json"))
-    group_registry = GroupRegistry(store=group_store)
-    return AuthService(
-        token_store=token_store,
-        group_registry=group_registry,
-        secret_key=secret_key,
-        **kwargs,
-    )
+    """Create an AuthService with Vault-backed stores for testing."""
+    _ = tmp_path
+    return create_memory_auth(secret_key=secret_key, **kwargs)
 
 
 # ============================================================================
@@ -94,8 +105,7 @@ class TestAuthServiceInit:
     def test_init_with_env_var(self, tmp_path: Path):
         """Test initialization with environment variable."""
         with patch.dict(os.environ, {"GOFR_TEST_JWT_SECRET": "env-secret"}):
-            token_store = FileTokenStore(str(tmp_path / "tokens.json"))
-            group_store = FileGroupStore(str(tmp_path / "groups.json"))
+            token_store, group_store = _create_vault_stores()
             group_registry = GroupRegistry(store=group_store)
             auth = AuthService(
                 token_store=token_store,
@@ -107,10 +117,15 @@ class TestAuthServiceInit:
 
     def test_init_auto_generates_secret(self, tmp_path: Path):
         """Test that secret is auto-generated when not provided."""
-        # Clear any existing env var
-        with patch.dict(os.environ, {}, clear=True):
-            token_store = FileTokenStore(str(tmp_path / "tokens.json"))
-            group_store = FileGroupStore(str(tmp_path / "groups.json"))
+        # Clear any existing env var but preserve Vault access
+        vault_url = os.environ.get("GOFR_VAULT_URL")
+        vault_token = os.environ.get("GOFR_VAULT_TOKEN")
+        with patch.dict(
+            os.environ,
+            {"GOFR_VAULT_URL": vault_url or "", "GOFR_VAULT_TOKEN": vault_token or ""},
+            clear=True,
+        ):
+            token_store, group_store = _create_vault_stores()
             group_registry = GroupRegistry(store=group_store)
             auth = AuthService(
                 token_store=token_store,
@@ -261,15 +276,12 @@ class TestTokenCreation:
             auth.create_token(groups=["nonexistent"])
 
     def test_create_token_saves_to_file(self, tmp_path: Path):
-        """Test that token creation saves to file."""
+        """Test that token creation saves to store."""
         auth = create_file_auth(tmp_path)
 
         auth.create_token(groups=["admin"])
 
-        # Read file and verify
-        token_store_path = tmp_path / "tokens.json"
-        stored = json.loads(token_store_path.read_text())
-        assert len(stored) == 1
+        assert len(auth._token_store.list_all()) == 1
 
 
 # ============================================================================
@@ -1033,7 +1045,14 @@ class TestAuthProvider:
         """Test create_auth_provider factory from environment."""
         from gofr_common.auth import create_auth_provider
 
-        with patch.dict(os.environ, {"GOFR_AUTH_BACKEND": "memory"}):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_AUTH_BACKEND": "vault",
+                "GOFR_VAULT_URL": os.environ.get("GOFR_VAULT_URL", ""),
+                "GOFR_VAULT_TOKEN": os.environ.get("GOFR_VAULT_TOKEN", ""),
+            },
+        ):
             provider = create_auth_provider(secret_key="test-secret")
 
             assert provider.service is not None
@@ -1050,9 +1069,9 @@ class TestTokenService:
 
     def test_token_service_creation(self):
         """Test creating a TokenService."""
-        from gofr_common.auth import MemoryTokenStore, TokenService
+        from gofr_common.auth import TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         assert service.secret_key == "test-secret"
@@ -1060,9 +1079,9 @@ class TestTokenService:
 
     def test_token_service_create_token(self):
         """Test creating a token with TokenService."""
-        from gofr_common.auth import MemoryTokenStore, TokenService
+        from gofr_common.auth import TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         token = service.create(groups=["admin", "users"])
@@ -1071,9 +1090,9 @@ class TestTokenService:
 
     def test_token_service_verify_token(self):
         """Test verifying a token with TokenService."""
-        from gofr_common.auth import MemoryTokenStore, TokenService
+        from gofr_common.auth import TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         token = service.create(groups=["admin"])
@@ -1083,9 +1102,9 @@ class TestTokenService:
 
     def test_token_service_revoke_token(self):
         """Test revoking a token with TokenService."""
-        from gofr_common.auth import MemoryTokenStore, TokenRevokedError, TokenService
+        from gofr_common.auth import TokenRevokedError, TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         token = service.create(groups=["admin"])
@@ -1096,9 +1115,9 @@ class TestTokenService:
 
     def test_token_service_list_all(self):
         """Test listing all tokens with TokenService."""
-        from gofr_common.auth import MemoryTokenStore, TokenService
+        from gofr_common.auth import TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         service.create(groups=["admin"])
@@ -1109,9 +1128,9 @@ class TestTokenService:
 
     def test_token_service_list_by_status(self):
         """Test listing tokens by status with TokenService."""
-        from gofr_common.auth import MemoryTokenStore, TokenService
+        from gofr_common.auth import TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         token1 = service.create(groups=["admin"])
@@ -1126,9 +1145,9 @@ class TestTokenService:
 
     def test_token_service_fingerprint(self):
         """Test token with fingerprint."""
-        from gofr_common.auth import FingerprintMismatchError, MemoryTokenStore, TokenService
+        from gofr_common.auth import FingerprintMismatchError, TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         token = service.create(groups=["admin"], fingerprint="device123")
@@ -1143,9 +1162,9 @@ class TestTokenService:
 
     def test_token_service_extra_claims(self):
         """Test token with extra claims."""
-        from gofr_common.auth import MemoryTokenStore, TokenService
+        from gofr_common.auth import TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         token = service.create(
@@ -1159,9 +1178,9 @@ class TestTokenService:
 
     def test_token_service_validation_errors(self):
         """Test TokenService validation errors."""
-        from gofr_common.auth import MemoryTokenStore, TokenService, TokenValidationError
+        from gofr_common.auth import TokenService, TokenValidationError
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         # Invalid token
@@ -1172,9 +1191,9 @@ class TestTokenService:
         """Test TokenService not found error."""
         import jwt
 
-        from gofr_common.auth import MemoryTokenStore, TokenNotFoundError, TokenService
+        from gofr_common.auth import TokenNotFoundError, TokenService
 
-        store = MemoryTokenStore()
+        store, _group_store = _create_vault_stores()
         service = TokenService(store=store, secret_key="test-secret")
 
         # Create a valid JWT but don't store it

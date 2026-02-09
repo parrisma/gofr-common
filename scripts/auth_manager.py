@@ -41,15 +41,12 @@ USAGE:
 
 ENVIRONMENT VARIABLES (REQUIRED):
     GOFR_JWT_SECRET        JWT signing secret (shared across all services)
-    GOFR_AUTH_BACKEND      Storage backend: memory, file, vault
-    
-    For Vault backend (recommended):
+    GOFR_AUTH_BACKEND      Must be "vault"
+
+    For Vault backend:
     GOFR_VAULT_URL         Vault server URL (e.g., http://gofr-vault:8201)
     GOFR_VAULT_TOKEN       Vault root token
     GOFR_VAULT_PATH_PREFIX Vault KV path prefix (default: gofr/auth)
-
-    For File backend:
-    GOFR_AUTH_DATA_DIR     Directory for auth data (default: data/auth)
 
 EXAMPLES:
     # List all groups with JSON output:
@@ -77,9 +74,7 @@ EXAMPLES:
     auth_manager.py --backend vault tokens inspect eyJhbGc...
 
 BACKEND SELECTION:
-    - memory: In-memory storage (testing only, not persistent)
-    - file:   JSON file storage (single instance, development)
-    - vault:  HashiCorp Vault (production, multi-instance)
+    - vault: HashiCorp Vault (required)
 
     Specify via --backend flag or GOFR_AUTH_BACKEND environment variable.
 """
@@ -97,11 +92,7 @@ import fnmatch
 try:
     from gofr_common.auth import (
         AuthService,
-        FileGroupStore,
-        FileTokenStore,
         GroupRegistry,
-        MemoryGroupStore,
-        MemoryTokenStore,
         VaultClient,
         VaultConfig,
         VaultGroupStore,
@@ -115,11 +106,7 @@ except ImportError:
         sys.path.insert(0, str(src_path))
     from gofr_common.auth import (
         AuthService,
-        FileGroupStore,
-        FileTokenStore,
         GroupRegistry,
-        MemoryGroupStore,
-        MemoryTokenStore,
         VaultClient,
         VaultConfig,
         VaultGroupStore,
@@ -163,12 +150,11 @@ def format_time_remaining(expires_at: Optional[datetime]) -> str:
         return f"{minutes}m"
 
 
-def create_auth_service(data_dir: str, backend: str = "file", quiet: bool = True) -> AuthService:
+def create_auth_service(backend: str = "vault", quiet: bool = True) -> AuthService:
     """Create AuthService with the appropriate backend.
 
     Args:
-        data_dir: Directory for auth data files
-        backend: Storage backend type (memory, file)
+        backend: Storage backend type (vault only)
         quiet: If True, suppress logging output (for CLI use)
     """
     # Suppress logging if quiet mode - must be done BEFORE any imports/inits
@@ -176,16 +162,13 @@ def create_auth_service(data_dir: str, backend: str = "file", quiet: bool = True
         import logging
         logging.disable(logging.CRITICAL)
 
-    data_path = Path(data_dir)
-    data_path.mkdir(parents=True, exist_ok=True)
-
-    if backend == "memory":
-        token_store = MemoryTokenStore()
-        group_store = MemoryGroupStore()
-    elif backend == "file":
-        token_store = FileTokenStore(data_path / "tokens.json")
-        group_store = FileGroupStore(data_path / "groups.json")
-    elif backend == "vault":
+    if backend != "vault":
+        print(
+            "ERROR: Unsupported backend. Set GOFR_AUTH_BACKEND=vault or pass --backend vault",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    else:
         # Get Vault configuration from environment - NO FALLBACKS
         vault_url = os.environ.get("GOFR_VAULT_URL")
         vault_token = os.environ.get("GOFR_VAULT_TOKEN")
@@ -207,9 +190,6 @@ def create_auth_service(data_dir: str, backend: str = "file", quiet: bool = True
 
         token_store = VaultTokenStore(client, path_prefix=vault_path_prefix)
         group_store = VaultGroupStore(client, path_prefix=vault_path_prefix)
-    else:
-        print(f"ERROR: Unsupported backend: {backend}", file=sys.stderr)
-        sys.exit(1)
 
     group_registry = GroupRegistry(store=group_store, auto_bootstrap=True)
 
@@ -520,8 +500,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 EXAMPLES:
-  List all groups:
-    %(prog)s --backend vault groups list
+    List all groups:
+        %(prog)s --backend vault groups list
 
   Create a finance group:
     %(prog)s --backend vault groups create finance --description "Finance team"
@@ -539,28 +519,21 @@ EXAMPLES:
         %(prog)s --backend vault tokens inspect --name prod-api-server
 
 ENVIRONMENT:
-  Required: GOFR_JWT_SECRET, GOFR_AUTH_BACKEND (or --backend)
-  Vault:    GOFR_VAULT_URL, GOFR_VAULT_TOKEN
-  File:     GOFR_AUTH_DATA_DIR
+    Required: GOFR_JWT_SECRET, GOFR_AUTH_BACKEND (or --backend)
+    Vault:    GOFR_VAULT_URL, GOFR_VAULT_TOKEN
 
 For full documentation, see script header or run with --help.
         """,
     )
 
     # Global options
-    parser.add_argument(
-        "--data-dir",
-        default=os.environ.get("GOFR_AUTH_DATA_DIR", "data/auth"),
-        help="Directory for auth data files (File backend). Default: %(default)s",
-    )
-    
     # Backend selection - no silent fallback to file
     backend_from_env = os.environ.get("GOFR_AUTH_BACKEND")
     parser.add_argument(
         "--backend",
-        default=backend_from_env,
-        choices=["memory", "file", "vault"],
-        help="Storage backend. Set via GOFR_AUTH_BACKEND or this flag. Required.",
+        default=backend_from_env or "vault",
+        choices=["vault"],
+        help="Storage backend (vault only). Set via GOFR_AUTH_BACKEND or this flag.",
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -727,11 +700,11 @@ For full documentation, see script header or run with --help.
     if args.backend is None:
         print("ERROR: Backend not specified.", file=sys.stderr)
         print("Set GOFR_AUTH_BACKEND environment variable or use --backend flag.", file=sys.stderr)
-        print("Valid backends: memory, file, vault", file=sys.stderr)
+        print("Valid backends: vault", file=sys.stderr)
         return 1
 
     # Create auth service (quiet mode unless verbose)
-    auth = create_auth_service(args.data_dir, args.backend, quiet=not args.verbose)
+    auth = create_auth_service(args.backend, quiet=not args.verbose)
 
     # Dispatch to appropriate command
     if args.command == "groups":

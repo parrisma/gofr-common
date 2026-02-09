@@ -1,5 +1,9 @@
 # Auth Service Refactoring Specification
 
+> Note: Memory and file backends have been removed. Vault is the only supported
+> storage backend. Historical references to memory/file stores below are kept
+> for context only.
+
 ## Requirements
 
 1. **Central Register of Groups**

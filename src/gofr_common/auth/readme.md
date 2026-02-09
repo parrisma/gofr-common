@@ -40,68 +40,34 @@ Two groups are **always present** and **cannot be made defunct**:
 
 ---
 
-## Store Configuration (Critical for Test Isolation)
+## Store Configuration (Vault-only)
 
-### The Problem
-
-Without proper store configuration, tests can contaminate production data or interfere with each other.
-
-### Solution: Separate Stores
+Vault is the only supported backend for tokens and groups.
 
 ```python
-from gofr_common.auth import AuthService
+from gofr_common.auth import AuthService, GroupRegistry
+from gofr_common.auth.backends import VaultConfig, VaultClient, VaultGroupStore, VaultTokenStore
 
-# PRODUCTION: File-based persistent storage
-auth_prod = AuthService(
-    secret_key="production-secret-from-env",
-    token_store_path="/var/data/gofr/auth/tokens.json",
-    # group_store_path auto-derived: /var/data/gofr/auth/groups.json
-)
+# Configure Vault from environment
+vault_config = VaultConfig.from_env("GOFR_DIG")
+vault_client = VaultClient(vault_config)
 
-# TESTING: In-memory isolation (RECOMMENDED)
-auth_test = AuthService(
-    secret_key="test-secret",
-    token_store_path=":memory:",  # <-- Magic value for in-memory
-)
+token_store = VaultTokenStore(vault_client)
+group_store = VaultGroupStore(vault_client)
+group_registry = GroupRegistry(store=group_store)
 
-# TESTING: File-based but isolated
-auth_test_file = AuthService(
-    secret_key="test-secret",
-    token_store_path="/tmp/test-auth/tokens.json",
-)
-```
-
-### `:memory:` Mode Details
-
-When `token_store_path=":memory:"`:
-- Both token store AND group registry use in-memory storage
-- No files are created or modified
-- Perfect isolation between test instances
-- Reserved groups (public, admin) are still auto-bootstrapped
-- Data is lost when the AuthService instance is garbage collected
-
-### Store Paths
-
-The AuthService manages **two** JSON files:
-
-| Store | Purpose | Configuration |
-|-------|---------|---------------|
-| `tokens.json` | Token records (keyed by UUID) | `token_store_path` parameter |
-| `groups.json` | Group registry | `group_store_path` parameter (defaults to same directory as tokens) |
-
-### Environment Variable Fallback
-
-```python
-# Uses GOFR_DIG_JWT_SECRET and GOFR_DIG_TOKEN_STORE from environment
-auth = AuthService(env_prefix="GOFR_DIG")
-
-# Explicit overrides always win
 auth = AuthService(
+    token_store=token_store,
+    group_registry=group_registry,
     env_prefix="GOFR_DIG",
-    secret_key="explicit-secret",  # Overrides GOFR_DIG_JWT_SECRET
-    token_store_path="/custom/path/tokens.json",  # Overrides GOFR_DIG_TOKEN_STORE
 )
 ```
+
+Environment variables:
+- `GOFR_DIG_VAULT_URL` (required)
+- `GOFR_DIG_VAULT_TOKEN` or `GOFR_DIG_VAULT_ROLE_ID` + `GOFR_DIG_VAULT_SECRET_ID`
+- `GOFR_DIG_VAULT_MOUNT` (default: secret)
+- `GOFR_DIG_VAULT_PATH_PREFIX` (default: gofr/auth)
 
 ---
 
@@ -174,10 +140,12 @@ auth = AuthService(
 ```python
 from gofr_common.auth import AuthService
 
+token_store, group_store = create_stores_from_env("GOFR")
+groups = GroupRegistry(store=group_store)
+
 auth = AuthService(
-    secret_key="your-secret",           # Or use env_prefix
-    token_store_path="/path/tokens.json",
-    group_store_path="/path/groups.json",  # Optional, derived from token path
+    token_store=token_store,
+    group_registry=groups,
     env_prefix="GOFR",                   # For env var fallback
     audience="my-api",                   # JWT audience claim
 )

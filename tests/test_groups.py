@@ -1,13 +1,12 @@
 """Tests for gofr_common.auth.groups module."""
 
-import json
+import os
 from datetime import datetime
-from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
 
-from gofr_common.auth.backends import FileGroupStore, MemoryGroupStore
+from gofr_common.auth.backends import VaultClient, VaultConfig, VaultGroupStore
 from gofr_common.auth.groups import (
     RESERVED_GROUPS,
     DuplicateGroupError,
@@ -16,6 +15,20 @@ from gofr_common.auth.groups import (
     GroupRegistry,
     ReservedGroupError,
 )
+
+
+def _create_vault_registry() -> GroupRegistry:
+    vault_url = os.environ.get("GOFR_VAULT_URL")
+    vault_token = os.environ.get("GOFR_VAULT_TOKEN")
+    if not vault_url or not vault_token:
+        raise RuntimeError(
+            "Vault test configuration missing. Set GOFR_VAULT_URL and GOFR_VAULT_TOKEN."
+        )
+
+    client = VaultClient(VaultConfig(url=vault_url, token=vault_token))
+    path_prefix = f"gofr/tests/{uuid4()}"
+    store = VaultGroupStore(client, path_prefix=path_prefix)
+    return GroupRegistry(store=store)
 
 # ============================================================================
 # Test Group dataclass
@@ -168,16 +181,16 @@ class TestGroup:
 
 
 # ============================================================================
-# Test GroupRegistry - In-Memory Mode
+# Test GroupRegistry - Vault Mode
 # ============================================================================
 
 
-class TestGroupRegistryInMemory:
-    """Tests for GroupRegistry with in-memory storage."""
+class TestGroupRegistryVault:
+    """Tests for GroupRegistry with Vault storage."""
 
     def test_registry_init_memory(self):
         """Test initializing registry in memory mode."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         # Should have reserved groups
         assert registry.get_group_by_name("public") is not None
@@ -185,7 +198,7 @@ class TestGroupRegistryInMemory:
 
     def test_reserved_groups_created(self):
         """Test that reserved groups are automatically created."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         public = registry.get_group_by_name("public")
         admin = registry.get_group_by_name("admin")
@@ -206,7 +219,7 @@ class TestGroupRegistryInMemory:
 
     def test_create_group(self):
         """Test creating a new group."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         group = registry.create_group("users", "Regular users")
 
@@ -218,7 +231,7 @@ class TestGroupRegistryInMemory:
 
     def test_create_group_without_description(self):
         """Test creating a group without description."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         group = registry.create_group("minimal")
 
@@ -227,7 +240,7 @@ class TestGroupRegistryInMemory:
 
     def test_create_group_reserved_name_raises(self):
         """Test that creating a group with reserved name raises error."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         with pytest.raises(ReservedGroupError) as exc_info:
             registry.create_group("public")
@@ -236,14 +249,14 @@ class TestGroupRegistryInMemory:
 
     def test_create_group_reserved_name_admin_raises(self):
         """Test that creating 'admin' group raises error."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         with pytest.raises(ReservedGroupError):
             registry.create_group("admin")
 
     def test_create_group_duplicate_raises(self):
         """Test that creating duplicate group raises error."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         registry.create_group("users")
 
         with pytest.raises(DuplicateGroupError) as exc_info:
@@ -253,7 +266,7 @@ class TestGroupRegistryInMemory:
 
     def test_get_group_by_id(self):
         """Test getting a group by UUID."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         created = registry.create_group("test-group")
 
         found = registry.get_group(created.id)
@@ -264,7 +277,7 @@ class TestGroupRegistryInMemory:
 
     def test_get_group_by_id_not_found(self):
         """Test getting non-existent group by UUID returns None."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         found = registry.get_group(uuid4())
 
@@ -272,7 +285,7 @@ class TestGroupRegistryInMemory:
 
     def test_get_group_by_name(self):
         """Test getting a group by name."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         registry.create_group("my-group")
 
         found = registry.get_group_by_name("my-group")
@@ -282,7 +295,7 @@ class TestGroupRegistryInMemory:
 
     def test_get_group_by_name_not_found(self):
         """Test getting non-existent group by name returns None."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         found = registry.get_group_by_name("nonexistent")
 
@@ -290,7 +303,7 @@ class TestGroupRegistryInMemory:
 
     def test_list_groups(self):
         """Test listing active groups."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         registry.create_group("group1")
         registry.create_group("group2")
 
@@ -306,7 +319,7 @@ class TestGroupRegistryInMemory:
 
     def test_list_groups_excludes_defunct(self):
         """Test that list_groups excludes defunct groups by default."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         group = registry.create_group("to-defunct")
         registry.make_defunct(group.id)
 
@@ -317,7 +330,7 @@ class TestGroupRegistryInMemory:
 
     def test_list_groups_include_defunct(self):
         """Test listing all groups including defunct."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         group = registry.create_group("to-defunct")
         registry.make_defunct(group.id)
 
@@ -328,7 +341,7 @@ class TestGroupRegistryInMemory:
 
     def test_make_defunct(self):
         """Test making a group defunct."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         group = registry.create_group("temp-group")
 
         result = registry.make_defunct(group.id)
@@ -341,14 +354,14 @@ class TestGroupRegistryInMemory:
 
     def test_make_defunct_not_found(self):
         """Test making non-existent group defunct raises error."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         with pytest.raises(GroupNotFoundError):
             registry.make_defunct(uuid4())
 
     def test_make_defunct_reserved_raises(self):
         """Test that making reserved group defunct raises error."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         public = registry.get_group_by_name("public")
         assert public is not None
 
@@ -359,7 +372,7 @@ class TestGroupRegistryInMemory:
 
     def test_make_defunct_admin_reserved_raises(self):
         """Test that making admin group defunct raises error."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         admin = registry.get_group_by_name("admin")
         assert admin is not None
 
@@ -368,7 +381,7 @@ class TestGroupRegistryInMemory:
 
     def test_make_defunct_already_defunct(self):
         """Test making already defunct group returns False."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         group = registry.create_group("already-defunct")
         registry.make_defunct(group.id)
 
@@ -378,7 +391,7 @@ class TestGroupRegistryInMemory:
 
     def test_get_reserved_group(self):
         """Test getting reserved group by name."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         public = registry.get_reserved_group("public")
         admin = registry.get_reserved_group("admin")
@@ -390,98 +403,12 @@ class TestGroupRegistryInMemory:
 
     def test_get_reserved_group_invalid_name(self):
         """Test getting non-reserved group raises ValueError."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         with pytest.raises(ValueError) as exc_info:
             registry.get_reserved_group("users")
 
         assert "not a reserved group" in str(exc_info.value).lower()
-
-
-# ============================================================================
-# Test GroupRegistry - File-Based Storage
-# ============================================================================
-
-
-class TestGroupRegistryFileBased:
-    """Tests for GroupRegistry with file-based storage."""
-
-    def test_registry_creates_file(self, tmp_path: Path):
-        """Test that registry creates groups.json file."""
-        store_path = tmp_path / "groups.json"
-
-        GroupRegistry(store=FileGroupStore(str(store_path)))
-
-        assert store_path.exists()
-        # Should have saved reserved groups
-        data = json.loads(store_path.read_text())
-        assert len(data) == 2  # public and admin
-
-    def test_registry_loads_existing(self, tmp_path: Path):
-        """Test that registry loads existing groups from file."""
-        store_path = tmp_path / "groups.json"
-
-        # Create first registry and add a group
-        registry1 = GroupRegistry(store=FileGroupStore(str(store_path)))
-        group = registry1.create_group("persistent")
-        group_id = str(group.id)
-
-        # Create second registry from same file
-        registry2 = GroupRegistry(store=FileGroupStore(str(store_path)))
-
-        # Should find the group
-        found = registry2.get_group_by_name("persistent")
-        assert found is not None
-        assert str(found.id) == group_id
-
-    def test_registry_persists_changes(self, tmp_path: Path):
-        """Test that changes are persisted to file."""
-        store_path = tmp_path / "groups.json"
-
-        registry = GroupRegistry(store=FileGroupStore(str(store_path)))
-        group = registry.create_group("test")
-        registry.make_defunct(group.id)
-
-        # Load raw JSON and verify
-        data = json.loads(store_path.read_text())
-        group_data = data[str(group.id)]
-        assert group_data["is_active"] is False
-        assert group_data["defunct_at"] is not None
-
-    def test_registry_nested_path(self, tmp_path: Path):
-        """Test that registry creates nested directories."""
-        store_path = tmp_path / "deep" / "nested" / "groups.json"
-
-        GroupRegistry(store=FileGroupStore(str(store_path)))
-
-        assert store_path.exists()
-
-    def test_registry_no_auto_bootstrap(self, tmp_path: Path):
-        """Test registry without auto bootstrap."""
-        store_path = tmp_path / "groups.json"
-
-        registry = GroupRegistry(store=FileGroupStore(str(store_path)), auto_bootstrap=False)
-
-        # Should be empty
-        assert len(registry.list_groups()) == 0
-
-    def test_ensure_reserved_groups_idempotent(self, tmp_path: Path):
-        """Test that ensure_reserved_groups is idempotent."""
-        store_path = tmp_path / "groups.json"
-
-        registry = GroupRegistry(store=FileGroupStore(str(store_path)))
-        public_group = registry.get_group_by_name("public")
-        assert public_group is not None
-        public_id = public_group.id
-
-        # Call again
-        registry.ensure_reserved_groups()
-
-        # Should not create duplicates
-        groups = registry.list_groups()
-        public_groups = [g for g in groups if g.name == "public"]
-        assert len(public_groups) == 1
-        assert public_groups[0].id == public_id
 
 
 # ============================================================================
@@ -494,7 +421,7 @@ class TestGroupRegistryEdgeCases:
 
     def test_group_name_case_sensitivity(self):
         """Test that group names are case-sensitive."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         # These should be different groups
         group1 = registry.create_group("Users")
@@ -504,7 +431,7 @@ class TestGroupRegistryEdgeCases:
 
     def test_reserved_group_case_insensitive_check(self):
         """Test that reserved name check is case-insensitive."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         # Should reject variations of reserved names
         with pytest.raises(ReservedGroupError):
@@ -515,7 +442,7 @@ class TestGroupRegistryEdgeCases:
 
     def test_many_groups(self):
         """Test registry handles many groups."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
 
         # Create 100 groups
         for i in range(100):
@@ -526,7 +453,7 @@ class TestGroupRegistryEdgeCases:
 
     def test_defunct_group_still_retrievable(self):
         """Test that defunct groups can still be retrieved by ID."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         group = registry.create_group("defunct-test")
         registry.make_defunct(group.id)
 
@@ -537,7 +464,7 @@ class TestGroupRegistryEdgeCases:
 
     def test_defunct_group_retrievable_by_name(self):
         """Test that defunct groups can be retrieved by name."""
-        registry = GroupRegistry(store=MemoryGroupStore())
+        registry = _create_vault_registry()
         group = registry.create_group("defunct-by-name")
         registry.make_defunct(group.id)
 

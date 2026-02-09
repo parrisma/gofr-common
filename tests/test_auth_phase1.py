@@ -4,21 +4,32 @@ These tests verify the validate_groups parameter functionality added to
 AuthService.verify_token() and AuthProvider.verify_token_strict().
 """
 
+import os
+from uuid import uuid4
+
 import pytest
 
 from gofr_common.auth import (
     AuthService,
     GroupRegistry,
     InvalidGroupError,
-    MemoryGroupStore,
-    MemoryTokenStore,
 )
+from gofr_common.auth.backends import VaultClient, VaultConfig, VaultGroupStore, VaultTokenStore
 
 
 def create_memory_auth(secret_key: str = "test-secret") -> AuthService:
-    """Create an AuthService with in-memory stores for testing."""
-    token_store = MemoryTokenStore()
-    group_store = MemoryGroupStore()
+    """Create an AuthService with Vault-backed stores for testing."""
+    vault_url = os.environ.get("GOFR_VAULT_URL")
+    vault_token = os.environ.get("GOFR_VAULT_TOKEN")
+    if not vault_url or not vault_token:
+        raise RuntimeError(
+            "Vault test configuration missing. Set GOFR_VAULT_URL and GOFR_VAULT_TOKEN."
+        )
+
+    vault_client = VaultClient(VaultConfig(url=vault_url, token=vault_token))
+    path_prefix = f"gofr/tests/{uuid4()}"
+    token_store = VaultTokenStore(vault_client, path_prefix=path_prefix)
+    group_store = VaultGroupStore(vault_client, path_prefix=path_prefix)
     group_registry = GroupRegistry(store=group_store)
     return AuthService(
         token_store=token_store,
@@ -61,8 +72,7 @@ class TestGroupValidationOnVerify:
         token = auth.create_token(groups=["ephemeral"])
 
         # Simulate group disappearing by clearing and re-bootstrapping
-        auth.groups._store._store.clear()
-        auth.groups._store._name_index.clear()
+        auth.groups._store.clear()
         auth.groups.ensure_reserved_groups()  # Re-add reserved only
 
         with pytest.raises(InvalidGroupError, match="does not exist"):

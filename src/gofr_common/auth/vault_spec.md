@@ -1,5 +1,9 @@
 # Vault Integration Spec for GOFR Auth
 
+> Note: Memory and file backends have been removed. Vault is the only supported
+> storage backend. Historical references to memory/file stores below are kept
+> for context only.
+
 ## Overview
 
 Replace file-based token/group storage with HashiCorp Vault KV v2 backend while maintaining existing API and test compatibility.

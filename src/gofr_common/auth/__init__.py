@@ -6,7 +6,7 @@ Provides JWT-based authentication with:
 - Central group registry with soft-delete (defunct) support
 - Authorization helpers for FastAPI endpoints
 - Optional token fingerprinting for theft detection
-- Pluggable storage backends (memory, file, vault)
+- Pluggable storage backends (vault)
 - FastAPI middleware integration
 
 Usage:
@@ -14,11 +14,13 @@ Usage:
     from gofr_common.auth import Group, GroupRegistry, RESERVED_GROUPS
     from gofr_common.auth import TokenRecord
     from gofr_common.auth import require_admin, require_group
-    from gofr_common.auth import MemoryTokenStore, MemoryGroupStore
+    from gofr_common.auth.backends import VaultConfig, VaultClient, VaultGroupStore, VaultTokenStore
 
-    # Create stores (memory for testing)
-    token_store = MemoryTokenStore()
-    group_store = MemoryGroupStore()
+    # Create Vault-backed stores
+    vault_config = VaultConfig.from_env("GOFR_DIG")
+    vault_client = VaultClient(vault_config)
+    token_store = VaultTokenStore(vault_client)
+    group_store = VaultGroupStore(vault_client)
     group_registry = GroupRegistry(store=group_store)
 
     # Create auth service
@@ -44,21 +46,12 @@ Usage:
 
 from .backends import (
     FactoryError,
-    FileGroupStore,
-    # File backends
-    FileTokenStore,
     GroupStore,
-    MemoryGroupStore,
-    # Memory backends
-    MemoryTokenStore,
-    # Exceptions
     StorageError,
     StorageUnavailableError,
-    # Protocols
     TokenStore,
     VaultAuthenticationError,
     VaultClient,
-    # Vault backends
     VaultConfig,
     VaultConnectionError,
     VaultError,
@@ -68,7 +61,6 @@ from .backends import (
     VaultTokenStore,
     create_group_store,
     create_stores_from_env,
-    # Factory functions
     create_token_store,
 )
 from .exceptions import (
@@ -94,6 +86,7 @@ from .groups import (
     GroupRegistryError,
     ReservedGroupError,
 )
+
 try:
     from .middleware import (
         get_auth_service,
@@ -124,7 +117,11 @@ except ImportError:  # FastAPI is optional for CLI usage
     verify_token = _middleware_unavailable
     verify_token_simple = _middleware_unavailable
 try:
-    from .provider import AuthProvider, SecurityAuditorProtocol, create_auth_provider
+    from .provider import (  # noqa: I001
+        AuthProvider,
+        SecurityAuditorProtocol,
+        create_auth_provider,  # pyright: ignore[reportAssignmentType]
+    )
 except ImportError:  # FastAPI is optional for CLI usage
     AuthProvider = None  # type: ignore[assignment]
     SecurityAuditorProtocol = None  # type: ignore[assignment]
@@ -184,12 +181,6 @@ __all__ = [
     # Storage Protocols
     "TokenStore",
     "GroupStore",
-    # Memory backends
-    "MemoryTokenStore",
-    "MemoryGroupStore",
-    # File backends
-    "FileTokenStore",
-    "FileGroupStore",
     # Vault backends
     "VaultConfig",
     "VaultClient",

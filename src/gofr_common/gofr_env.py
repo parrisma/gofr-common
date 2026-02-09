@@ -12,7 +12,7 @@ Usage:
 
 SSOT Files (managed by bootstrap.py):
     - secrets/bootstrap_tokens.json           → JWT tokens (admin/public)
-    - lib/gofr-common/config/gofr_ports.env   → Port configuration  
+    - lib/gofr-common/config/gofr_ports.env   → Port configuration
     - docker/.env                             → Docker config (JWT_SECRET, etc)
     - secrets/vault_root_token                → Vault root token (Zero-Trust Bootstrap)
     - /run/secrets/vault_creds                → AppRole credentials (container)
@@ -20,7 +20,7 @@ SSOT Files (managed by bootstrap.py):
 Token Keys:
     - admin_token  → Full admin access (source management, group management)
     - public_token → Public/read-only access
-    
+
 Group Mappings:
     - "admin" / "group-simulation" → admin_token
     - "public"                     → public_token
@@ -94,11 +94,11 @@ def _load_simulation_tokens() -> Dict[str, str]:
     global _simulation_tokens_cache
     if _simulation_tokens_cache is not None:
         return _simulation_tokens_cache
-    
+
     if not SIMULATION_TOKENS_FILE.exists():
         _simulation_tokens_cache = {}
         return {}
-    
+
     try:
         with open(SIMULATION_TOKENS_FILE) as f:
             data = json.load(f)
@@ -147,7 +147,7 @@ def get_token_for_group(group: str) -> str:
     sim_tokens = _load_simulation_tokens()
     if group in sim_tokens:
         return sim_tokens[group]
-    
+
     # Check bootstrap tokens
     bootstrap_tokens = _load_tokens()
     if group in bootstrap_tokens:

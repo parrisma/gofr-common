@@ -33,7 +33,6 @@ set -euo pipefail
 
 # Default values
 USE_DOCKER=false
-BACKEND="vault"
 
 # Parse wrapper flags (before passing to Python)
 while [[ $# -gt 0 ]]; do
@@ -41,10 +40,6 @@ while [[ $# -gt 0 ]]; do
         --docker)
             USE_DOCKER=true
             shift
-            ;;
-        --backend)
-            BACKEND="$2"
-            shift 2
             ;;
         --help|-h)
             cat << 'EOF'
@@ -55,7 +50,6 @@ USAGE:
 
 OPTIONS:
   --docker          Use Docker hostnames (required in dev container)
-  --backend TYPE    Backend type: vault (default), file, memory
   --help, -h        Show this help
 
 EXAMPLES:
@@ -140,8 +134,8 @@ else
     export GOFR_VAULT_URL="http://localhost:${GOFR_VAULT_PORT}"
 fi
 
-# Set backend
-export GOFR_AUTH_BACKEND="${BACKEND}"
+# Set backend (vault only)
+export GOFR_AUTH_BACKEND="vault"
 
 # ZERO-TRUST BOOTSTRAP: VAULT_TOKEN must be explicitly loaded from secrets/ by caller
 # No fallbacks - fail if not set
@@ -156,7 +150,7 @@ export GOFR_VAULT_TOKEN="${VAULT_TOKEN}"
 # Display configuration
 echo "=== Auth Manager Configuration ===" >&2
 echo "Environment: prod" >&2
-echo "Backend: ${BACKEND}" >&2
+echo "Backend: vault" >&2
 echo "Vault URL: ${GOFR_VAULT_URL}" >&2
 echo "Vault Token: ${GOFR_VAULT_TOKEN}" >&2
 echo "=====================================" >&2
@@ -164,4 +158,4 @@ echo "" >&2
 
 # Run auth_manager.py with remaining arguments
 cd "${SCRIPT_DIR}"
-exec uv run python auth_manager.py --backend "${BACKEND}" "$@"
+exec uv run python auth_manager.py --backend "vault" "$@"

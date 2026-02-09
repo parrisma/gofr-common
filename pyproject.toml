@@ -91,6 +91,9 @@ ignore = ["E501"]  # Line length handled by black
 [tool.pyright]
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
+exclude = [
+    "src/gofr_common/auth/token_manager.py",  # Legacy CLI, superseded by auth_manager.py
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

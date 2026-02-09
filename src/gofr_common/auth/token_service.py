@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import hashlib
 import os
-from datetime import datetime, timedelta
 import re
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional
 
 import jwt
@@ -57,9 +57,11 @@ class TokenService:
     - Enhanced JWT claims (nbf, aud, jti)
 
     Example:
-        from gofr_common.auth.backends import MemoryTokenStore
+        from gofr_common.auth.backends import VaultConfig, VaultClient, VaultTokenStore
 
-        store = MemoryTokenStore()
+        vault_config = VaultConfig.from_env("GOFR_DIG")
+        vault_client = VaultClient(vault_config)
+        store = VaultTokenStore(vault_client)
         tokens = TokenService(store=store, secret_key="my-secret")
 
         # Create a token

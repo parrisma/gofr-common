@@ -107,8 +107,6 @@ class TokenStore(Protocol):
     def reload(self) -> None:
         """Reload data from underlying storage.
 
-        For file-based stores, re-reads from disk.
-        For memory stores, this is a no-op.
         For Vault stores, clears any local cache.
         """
         ...
@@ -183,8 +181,6 @@ class GroupStore(Protocol):
     def reload(self) -> None:
         """Reload data from underlying storage.
 
-        For file-based stores, re-reads from disk.
-        For memory stores, this is a no-op.
         For Vault stores, clears any local cache.
         """
         ...

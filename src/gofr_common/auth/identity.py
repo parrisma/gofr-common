@@ -9,11 +9,10 @@ without ever touching the Root Token.
 
 import json
 import threading
-import time
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Dict, Optional
 
-from .backends.vault_client import VaultClient, VaultError, VaultAuthenticationError
+from .backends.vault_client import VaultClient, VaultError
 from .backends.vault_config import VaultConfig
 
 # Standard injection path (same in Dev bind-mount and Prod Docker Secrets)
@@ -89,7 +88,7 @@ class VaultIdentity:
                 creds = json.load(f)
 
             if "role_id" not in creds or "secret_id" not in creds:
-                raise VaultIdentityError(f"Invalid credentials file: missing role_id or secret_id")
+                raise VaultIdentityError("Invalid credentials file: missing role_id or secret_id")
 
             return creds
         except json.JSONDecodeError as e:

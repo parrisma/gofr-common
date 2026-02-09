@@ -116,15 +116,16 @@ else
     echo -e "${YELLOW}Warning: Port config not found at ${PORTS_CONFIG}${NC}"
 fi
 
-# Vault test configuration (uses test port from gofr_ports.sh)
-VAULT_SCRIPT_DIR="${PROJECT_ROOT}/docker/infra/vault"
+# Vault test configuration
 VAULT_CONTAINER_NAME="gofr-vault-test"
-VAULT_TEST_PORT="${GOFR_VAULT_PORT}"  # Already set to test port by gofr_set_test_ports
+VAULT_IMAGE="hashicorp/vault:1.15.4"
+VAULT_INTERNAL_PORT=8200  # Vault dev-mode default
+VAULT_TEST_PORT="${GOFR_VAULT_PORT_TEST:-8301}"
 # Always use a dedicated test-only token to avoid leaking prod/dev tokens
 VAULT_TEST_TOKEN="${GOFR_TEST_VAULT_DEV_TOKEN:-gofr-dev-root-token}"
 TEST_NETWORK="${GOFR_TEST_NETWORK:-gofr-test-net}"
 # Connect any running dev container so in-container pytest can reach test services
-DEV_CONTAINER_NAMES=("gofr-common-dev")
+DEV_CONTAINER_NAMES=("gofr-common-dev" "gofr-dig-dev")
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -148,25 +149,21 @@ cleanup_environment() {
 }
 
 start_vault_test_container() {
-    echo -e "${BLUE}Starting Vault in ephemeral test mode...${NC}"
+    echo -e "${BLUE}Starting Vault in ephemeral dev mode...${NC}"
 
     # Detect if script is running inside a container to choose the right Vault URL
     is_running_in_docker() {
-        if [ -f "/.dockerenv" ]; then
-            return 0
-        fi
-        if grep -qa "docker" /proc/1/cgroup 2>/dev/null; then
-            return 0
-        fi
+        [ -f "/.dockerenv" ] && return 0
+        grep -qa "docker\|containerd" /proc/1/cgroup 2>/dev/null && return 0
         return 1
     }
-    
+
     # Ensure test network exists
     if ! docker network ls --format '{{.Name}}' | grep -q "^${TEST_NETWORK}$"; then
         echo "Creating test network: ${TEST_NETWORK}"
         docker network create "${TEST_NETWORK}"
     fi
-    
+
     # Connect dev containers to test network if not already connected
     for dev_name in "${DEV_CONTAINER_NAMES[@]}"; do
         if docker ps --format '{{.Names}}' | grep -q "^${dev_name}$"; then
@@ -176,49 +173,75 @@ start_vault_test_container() {
             fi
         fi
     done
-    
-    # Check if Vault image exists
-    if ! docker images gofr-vault:latest --format '{{.Repository}}' | grep -q "gofr-vault"; then
-        echo -e "${YELLOW}Building Vault image first...${NC}"
-        if [ -f "${VAULT_SCRIPT_DIR}/build.sh" ]; then
-            bash "${VAULT_SCRIPT_DIR}/build.sh"
-        else
-            echo -e "${RED}Vault build script not found at ${VAULT_SCRIPT_DIR}/build.sh${NC}"
-            return 1
-        fi
+
+    # Pull Vault image if not present
+    if ! docker images "${VAULT_IMAGE}" --format '{{.Repository}}' | grep -q "vault"; then
+        echo -e "${YELLOW}Pulling Vault image: ${VAULT_IMAGE}${NC}"
+        docker pull "${VAULT_IMAGE}"
     fi
-    
+
     # Stop any existing test container
     if docker ps -aq -f name="^${VAULT_CONTAINER_NAME}$" | grep -q .; then
-        echo "Stopping existing Vault test container..."
-        docker stop ${VAULT_CONTAINER_NAME} 2>/dev/null || true
-        docker rm ${VAULT_CONTAINER_NAME} 2>/dev/null || true
+        echo "Removing existing Vault test container..."
+        docker rm -f "${VAULT_CONTAINER_NAME}" 2>/dev/null || true
     fi
-    
-    # Start Vault using the run.sh script in test mode on test network
-    # Force the dev token for this test invocation so prod/dev env vars are ignored
-    export GOFR_VAULT_DEV_TOKEN="${VAULT_TEST_TOKEN}"
-    if [ -f "${VAULT_SCRIPT_DIR}/run.sh" ]; then
-        bash "${VAULT_SCRIPT_DIR}/run.sh" --test --port "${VAULT_TEST_PORT}" --name "${VAULT_CONTAINER_NAME}" --network "${TEST_NETWORK}"
-    else
-        echo -e "${RED}Vault run script not found at ${VAULT_SCRIPT_DIR}/run.sh${NC}"
+
+    # Start Vault in dev mode (no init/unseal needed, ephemeral in-memory storage)
+    echo "Starting ${VAULT_CONTAINER_NAME} (dev mode, port ${VAULT_TEST_PORT}->${VAULT_INTERNAL_PORT})..."
+    docker run -d \
+        --name "${VAULT_CONTAINER_NAME}" \
+        --hostname "${VAULT_CONTAINER_NAME}" \
+        --network "${TEST_NETWORK}" \
+        --cap-add IPC_LOCK \
+        -p "${VAULT_TEST_PORT}:${VAULT_INTERNAL_PORT}" \
+        -e "VAULT_DEV_ROOT_TOKEN_ID=${VAULT_TEST_TOKEN}" \
+        -e "VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:${VAULT_INTERNAL_PORT}" \
+        -e "VAULT_LOG_LEVEL=warn" \
+        "${VAULT_IMAGE}" \
+        server -dev > /dev/null
+
+    # Wait for Vault to become healthy
+    echo -n "Waiting for Vault to be ready"
+    local retries=0
+    local max_retries=30
+    while [ $retries -lt $max_retries ]; do
+        if docker exec -e VAULT_ADDR="http://127.0.0.1:${VAULT_INTERNAL_PORT}" \
+            "${VAULT_CONTAINER_NAME}" vault status > /dev/null 2>&1; then
+            echo " ready!"
+            break
+        fi
+        echo -n "."
+        sleep 1
+        retries=$((retries + 1))
+    done
+    if [ $retries -eq $max_retries ]; then
+        echo ""
+        echo -e "${RED}Vault failed to start within ${max_retries}s${NC}"
+        docker logs "${VAULT_CONTAINER_NAME}" 2>&1 | tail -20
         return 1
     fi
-    
+
+    # Enable KV secrets engine v2 at the expected path
+    docker exec -e VAULT_ADDR="http://127.0.0.1:${VAULT_INTERNAL_PORT}" \
+        -e VAULT_TOKEN="${VAULT_TEST_TOKEN}" \
+        "${VAULT_CONTAINER_NAME}" \
+        vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
+
     # Set environment variables for tests
     if is_running_in_docker; then
         # Inside a container on the test network, talk to Vault by container name
-        export GOFR_VAULT_URL="http://${VAULT_CONTAINER_NAME}:8200"
+        export GOFR_VAULT_URL="http://${VAULT_CONTAINER_NAME}:${VAULT_INTERNAL_PORT}"
     else
         # On the host, use the published test port
         export GOFR_VAULT_URL="http://localhost:${VAULT_TEST_PORT}"
     fi
     export GOFR_VAULT_TOKEN="${VAULT_TEST_TOKEN}"
-    
+
     echo -e "${GREEN}Vault started successfully${NC}"
-    echo "  Network: ${TEST_NETWORK}"
-    echo "  URL:     ${GOFR_VAULT_URL}"
-    echo "  Token:   ${GOFR_VAULT_TOKEN}"
+    echo "  Container: ${VAULT_CONTAINER_NAME}"
+    echo "  Network:   ${TEST_NETWORK}"
+    echo "  URL:       ${GOFR_VAULT_URL}"
+    echo "  Token:     ${GOFR_VAULT_TOKEN}"
     echo ""
 }
 
@@ -435,8 +458,9 @@ fi
 # PYTEST EXECUTION
 # =============================================================================
 
-# Build pytest command
-PYTEST_CMD="pytest"
+# Build pytest command (use python -m pytest for reliable invocation
+# even when venv shebangs point to stale paths)
+PYTEST_CMD="python -m pytest"
 
 # Add coverage if requested
 COVERAGE_ARGS=""

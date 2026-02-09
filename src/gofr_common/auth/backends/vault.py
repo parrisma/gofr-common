@@ -31,7 +31,7 @@ class _CacheEntry:
     """Cache entry with timestamp for TTL checking."""
     record: Optional[TokenRecord]
     timestamp: float = field(default_factory=time.monotonic)
-    
+
     def is_expired(self, ttl: float) -> bool:
         """Check if entry has exceeded TTL."""
         return (time.monotonic() - self.timestamp) > ttl
@@ -69,7 +69,7 @@ class VaultTokenStore:
         self.path_prefix = path_prefix.rstrip("/")
         self.logger = logger or create_logger(name="vault-token-store")
         self._tokens_path = f"{self.path_prefix}/tokens"
-        
+
         # TTL-based cache for token lookups
         self._cache: Dict[str, _CacheEntry] = {}
         self._cache_ttl = cache_ttl
@@ -95,7 +95,7 @@ class VaultTokenStore:
 
     def _get_from_cache(self, token_id: str) -> Optional[_CacheEntry]:
         """Get token from cache if valid.
-        
+
         Returns:
             Cache entry if found and not expired, None otherwise
         """
@@ -137,22 +137,22 @@ class VaultTokenStore:
         """
         # Check periodic reload for expiration sweep
         self._check_periodic_reload()
-        
+
         # Check cache first (unless bypassed)
         if not bypass_cache:
             cached = self._get_from_cache(token_id)
             if cached is not None:
                 self.logger.debug("Cache hit", token_id=token_id)
                 return cached.record
-        
+
         # Query Vault
         try:
             data = self.client.read_secret(self._token_path(token_id))
             record = TokenRecord.from_dict(data) if data else None
-            
+
             # Update cache
             self._put_in_cache(token_id, record)
-            
+
             if record:
                 self.logger.debug("Fetched from Vault", token_id=token_id)
             return record
@@ -268,34 +268,34 @@ class VaultTokenStore:
         """
         # Check periodic reload
         self._check_periodic_reload()
-        
+
         # Check cache first
         cached = self._get_from_cache(token_id)
         if cached is not None:
             return cached.record is not None
-        
+
         # Query Vault
         try:
             exists = self.client.secret_exists(self._token_path(token_id))
-            
+
             if not exists and retry_on_miss:
                 # Token not found - might be newly created externally
                 # Invalidate any stale cache and do a direct Vault query
                 self._invalidate_cache(token_id)
                 self.logger.debug("Token not found, retrying after cache invalidation", token_id=token_id)
-                
+
                 # Direct query bypassing any potential connection caching
                 record = self.get(token_id, bypass_cache=True)
                 exists = record is not None
-                
+
                 if exists:
                     self.logger.info("Token found on retry (likely newly created)", token_id=token_id)
-            
+
             # Cache the result (get() already cached if we did the retry)
             if not retry_on_miss or not exists:
                 # Only cache if we didn't already via get()
                 pass  # get() handles caching
-            
+
             return exists
         except VaultConnectionError as e:
             self.logger.error("Vault connection failed", error=str(e))
@@ -307,7 +307,7 @@ class VaultTokenStore:
 
     def reload(self) -> None:
         """Reload all tokens from Vault, refreshing the local cache.
-        
+
         This clears the local cache and updates the last reload timestamp.
         Subsequent get/exists calls will fetch fresh data from Vault.
         """

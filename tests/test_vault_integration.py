@@ -590,102 +590,102 @@ class TestVaultTokenStoreCaching:
     def test_cache_hit_returns_cached_value(self, vault_client: VaultClient, unique_prefix: str):
         """Test that repeated gets return cached value without hitting Vault."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         token_id = str(uuid4())
         record = TokenRecord.create(
             groups=["admin"],
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store.put(token_id, record)
-        
+
         # First get populates cache
         result1 = store.get(token_id)
         assert result1 is not None
-        
+
         # Second get should hit cache (we can't directly verify, but it should work)
         result2 = store.get(token_id)
         assert result2 is not None
         assert result2.groups == result1.groups
-        
+
         # Cleanup
         store.clear()
 
     def test_cache_disabled_when_ttl_zero(self, vault_client: VaultClient, unique_prefix: str):
         """Test that caching is disabled when cache_ttl=0."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=0)
-        
+
         token_id = str(uuid4())
         record = TokenRecord.create(
             groups=["admin"],
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store.put(token_id, record)
-        
+
         # Cache should be empty since TTL=0
         assert store._get_from_cache(token_id) is None
-        
+
         # Get should still work (directly from Vault)
         result = store.get(token_id)
         assert result is not None
-        
+
         # Cleanup
         store.clear()
 
     def test_bypass_cache_fetches_from_vault(self, vault_client: VaultClient, unique_prefix: str):
         """Test that bypass_cache=True fetches directly from Vault."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         token_id = str(uuid4())
         record = TokenRecord.create(
             groups=["admin"],
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store.put(token_id, record)
-        
+
         # Bypass cache should still return the record
         result = store.get(token_id, bypass_cache=True)
         assert result is not None
         assert result.groups == ["admin"]
-        
+
         # Cleanup
         store.clear()
 
     def test_cache_invalidation_on_delete(self, vault_client: VaultClient, unique_prefix: str):
         """Test that delete invalidates the cache entry."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         token_id = str(uuid4())
         record = TokenRecord.create(
             groups=["admin"],
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store.put(token_id, record)
-        
+
         # Populate cache
         store.get(token_id)
         assert store._get_from_cache(token_id) is not None
-        
+
         # Delete should invalidate cache
         store.delete(token_id)
         assert store._get_from_cache(token_id) is None
-        
+
         # Cleanup
         store.clear()
 
     def test_reload_clears_cache(self, vault_client: VaultClient, unique_prefix: str):
         """Test that reload() clears all cached entries."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         # Create and cache some tokens
         token_ids = []
         for i in range(3):
@@ -697,17 +697,17 @@ class TestVaultTokenStoreCaching:
             )
             store.put(token_id, record)
             store.get(token_id)  # Populate cache
-        
+
         # Verify cache is populated
         for tid in token_ids:
             assert store._get_from_cache(tid) is not None
-        
+
         # Reload should clear cache
         store.reload()
-        
+
         for tid in token_ids:
             assert store._get_from_cache(tid) is None
-        
+
         # Cleanup
         store.clear()
 
@@ -716,11 +716,11 @@ class TestVaultTokenStoreCaching:
     ):
         """Test that retry_on_miss finds a token created by another store instance."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         # Two store instances sharing the same Vault prefix (simulates two services)
         store_a = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
         store_b = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         # Store A creates a token
         token_id = str(uuid4())
         record = TokenRecord.create(
@@ -728,16 +728,16 @@ class TestVaultTokenStoreCaching:
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store_a.put(token_id, record)
-        
+
         # Store B hasn't seen this token yet (not in its cache)
         # exists() with retry_on_miss=True should find it
         assert store_b.exists(token_id, retry_on_miss=True) is True
-        
+
         # Now get() should also work
         result = store_b.get(token_id)
         assert result is not None
         assert result.groups == ["admin"]
-        
+
         # Cleanup
         store_a.clear()
 
@@ -746,36 +746,36 @@ class TestVaultTokenStoreCaching:
     ):
         """Test exists() behavior - with retry_on_miss=False, cache staleness matters."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         # Two store instances
         store_a = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
         store_b = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         token_id = str(uuid4())
-        
+
         # Store B checks for token first - caches the "not found" result
         # Note: With our implementation, we only cache found tokens, not misses
         # So this test verifies the retry_on_miss behavior
-        
+
         # Store A creates the token
         record = TokenRecord.create(
             groups=["admin"],
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store_a.put(token_id, record)
-        
+
         # Store B with retry_on_miss=True should find it
         assert store_b.exists(token_id, retry_on_miss=True) is True
-        
+
         # Cleanup
         store_a.clear()
 
     def test_cache_clear_on_store_clear(self, vault_client: VaultClient, unique_prefix: str):
         """Test that clear() also clears the cache."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         token_id = str(uuid4())
         record = TokenRecord.create(
             groups=["admin"],
@@ -783,32 +783,32 @@ class TestVaultTokenStoreCaching:
         )
         store.put(token_id, record)
         store.get(token_id)  # Populate cache
-        
+
         assert store._get_from_cache(token_id) is not None
-        
+
         store.clear()
-        
+
         assert store._get_from_cache(token_id) is None
         assert len(store._cache) == 0
 
     def test_put_updates_cache(self, vault_client: VaultClient, unique_prefix: str):
         """Test that put() updates the cache with the new record."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         token_id = str(uuid4())
         record = TokenRecord.create(
             groups=["admin"],
             expires_at=datetime.utcnow() + timedelta(hours=1),
         )
         store.put(token_id, record)
-        
+
         # Cache should be populated immediately after put
         cached = store._get_from_cache(token_id)
         assert cached is not None
         assert cached.record.groups == ["admin"]
-        
+
         # Cleanup
         store.clear()
 
@@ -817,13 +817,13 @@ class TestVaultTokenStoreCaching:
     ):
         """Test that token created on one instance is visible on another (simulates auth_manager + MCP server)."""
         from gofr_common.auth.tokens import TokenRecord
-        
+
         # Simulate auth_manager creating a token
         auth_manager_store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         # Simulate MCP server's token store (created at server startup, before the token exists)
         mcp_server_store = VaultTokenStore(vault_client, path_prefix=unique_prefix, cache_ttl=300)
-        
+
         # auth_manager creates a new token
         token_id = str(uuid4())
         record = TokenRecord.create(
@@ -832,15 +832,15 @@ class TestVaultTokenStoreCaching:
             name="test-api-token",
         )
         auth_manager_store.put(token_id, record)
-        
+
         # MCP server should be able to find this token via retry-on-miss
         # This is the key scenario we fixed
         assert mcp_server_store.exists(token_id) is True
-        
+
         retrieved = mcp_server_store.get(token_id)
         assert retrieved is not None
         assert retrieved.name == "test-api-token"
         assert retrieved.groups == ["us_sales"]
-        
+
         # Cleanup
         auth_manager_store.clear()

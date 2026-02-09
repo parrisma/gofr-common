@@ -1,13 +1,13 @@
 """Authentication configuration utilities.
 
-Provides resolve_auth_config() for resolving JWT secret and token store
-from CLI arguments, environment variables, and defaults.
+Provides resolve_auth_config() for resolving JWT secret from CLI arguments,
+environment variables, and defaults. Storage backends are configured via
+create_stores_from_env (Vault-only).
 """
 
 import os
 import secrets
 import sys
-from pathlib import Path
 from typing import Optional, Tuple
 
 from gofr_common.logger import Logger, create_logger
@@ -16,33 +16,29 @@ from gofr_common.logger import Logger, create_logger
 def resolve_auth_config(
     env_prefix: str = "GOFR",
     jwt_secret_arg: Optional[str] = None,
-    token_store_arg: Optional[str] = None,
     require_auth: bool = True,
     allow_auto_secret: bool = True,
     exit_on_missing: bool = False,
     logger: Optional[Logger] = None,
-) -> Tuple[Optional[str], Optional[Path], bool]:
+) -> Tuple[Optional[str], bool]:
     """Resolve authentication configuration from CLI args, environment, and defaults.
 
     Priority chain:
-        1. CLI arguments (jwt_secret_arg, token_store_arg)
-        2. Environment variables ({PREFIX}_JWT_SECRET, {PREFIX}_TOKEN_STORE)
+        1. CLI arguments (jwt_secret_arg)
+        2. Environment variables ({PREFIX}_JWT_SECRET)
         3. Auto-generated secret (only if allow_auto_secret=True and not production)
-        4. Default token store path
 
     Args:
         env_prefix: Environment variable prefix (e.g., "GOFR_DIG", "GOFR_PLOT")
         jwt_secret_arg: JWT secret from CLI argument (takes precedence)
-        token_store_arg: Token store path from CLI argument (takes precedence)
         require_auth: Whether authentication is required
         allow_auto_secret: Allow auto-generation of dev secret (default: True)
         exit_on_missing: If True, call sys.exit(1) when secret missing (default: False)
         logger: Optional logger instance
 
     Returns:
-        Tuple of (jwt_secret, token_store_path, require_auth)
+        Tuple of (jwt_secret, require_auth)
         - jwt_secret: Resolved JWT secret or None if auth disabled
-        - token_store_path: Resolved token store path or None if auth disabled
         - require_auth: Final auth requirement status
 
     Raises:
@@ -61,11 +57,10 @@ def resolve_auth_config(
     # If auth not required, return early
     if not require_auth:
         logger.info("Authentication disabled (--no-auth)")
-        return None, None, False
+        return None, False
 
     # Environment variable names
     secret_env = f"{prefix}_JWT_SECRET"
-    store_env = f"{prefix}_TOKEN_STORE"
     env_env = f"{prefix}_ENV"
 
     # Resolve JWT secret with priority chain
@@ -112,36 +107,15 @@ def resolve_auth_config(
             sys.exit(1)
         raise ValueError(error_msg)
 
-    # Resolve token store path with priority chain
-    resolved_token_store: Optional[Path] = None
-    store_source = "none"
-
-    # Priority 1: CLI argument
-    if token_store_arg:
-        resolved_token_store = Path(token_store_arg)
-        store_source = "CLI argument"
-
-    # Priority 2: Environment variable
-    elif os.environ.get(store_env):
-        resolved_token_store = Path(os.environ[store_env])
-        store_source = f"{store_env} environment variable"
-
-    # Priority 3: Default path
-    else:
-        resolved_token_store = Path("data/auth/tokens.json")
-        store_source = "default path"
-
     # Log resolved configuration
     logger.info(
         "Authentication configuration resolved",
         require_auth=require_auth,
         secret_source=secret_source,
         secret_fingerprint=_fingerprint_secret(resolved_secret),
-        token_store=str(resolved_token_store),
-        store_source=store_source,
     )
 
-    return resolved_secret, resolved_token_store, require_auth
+    return resolved_secret, require_auth
 
 
 def resolve_jwt_secret_for_cli(

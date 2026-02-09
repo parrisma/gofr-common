@@ -2,7 +2,7 @@
 
 Provides a central registry of groups with support for:
 - Reserved groups (public, admin) that cannot be made defunct
-- Pluggable storage backends (memory, file, vault)
+- Pluggable storage backends (vault)
 - Soft-delete (defunct) rather than hard delete
 """
 
@@ -108,14 +108,8 @@ class GroupRegistry:
     protected from being made defunct.
 
     Example:
-        # In-memory storage (for testing)
-        registry = GroupRegistry(store=MemoryGroupStore())
-
-        # File-based storage
-        registry = GroupRegistry(store=FileGroupStore("/path/to/groups.json"))
-
         # Vault-backed storage
-        registry = GroupRegistry(store=VaultGroupStore(client, prefix="gofr/auth"))
+        registry = GroupRegistry(store=VaultGroupStore(client, path_prefix="gofr/auth"))
 
         # Create a group
         group = registry.create_group("users", "Regular users")
@@ -137,7 +131,7 @@ class GroupRegistry:
         """Initialize the group registry.
 
         Args:
-            store: GroupStore instance for storage backend (memory, file, vault)
+            store: GroupStore instance for storage backend (vault)
             logger: Optional logger instance
             auto_bootstrap: If True, automatically ensure reserved groups exist
         """

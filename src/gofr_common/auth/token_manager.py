@@ -13,7 +13,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import datetime
 from typing import Optional
@@ -110,7 +109,7 @@ def _cmd_create(auth: AuthService, args: argparse.Namespace) -> None:
 
     info = auth.verify_token(token)
 
-    print(f"Token created successfully")
+    print("Token created successfully")
     print(f"  Group:      {info.group}")
     print(f"  Issued:     {info.issued_at.isoformat()}")
     print(f"  Expires:    {info.expires_at.isoformat()}")
@@ -151,7 +150,7 @@ def _cmd_verify(auth: AuthService, args: argparse.Namespace) -> None:
     """Verify a token."""
     try:
         info = auth.verify_token(args.token, require_store=False)
-        print(f"Token is VALID")
+        print("Token is VALID")
         print(f"  Group:      {info.group}")
         print(f"  Issued:     {info.issued_at.isoformat()}")
         print(f"  Expires:    {info.expires_at.isoformat()}")
@@ -163,13 +162,13 @@ def _cmd_verify(auth: AuthService, args: argparse.Namespace) -> None:
             hours = remaining.seconds // 3600
             print(f"  Remaining:  {days}d {hours}h")
         else:
-            print(f"  Status:     EXPIRED")
+            print("  Status:     EXPIRED")
 
         # Check if token is in store
         if args.token in auth.token_store:
-            print(f"  In store:   yes")
+            print("  In store:   yes")
         else:
-            print(f"  In store:   no (external/bootstrap token)")
+            print("  In store:   no (external/bootstrap token)")
 
     except ValueError as e:
         print(f"Token is INVALID: {e}", file=sys.stderr)
