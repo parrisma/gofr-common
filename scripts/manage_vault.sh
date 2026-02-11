@@ -21,6 +21,41 @@ fi
 log() { echo "[vault-manage] $*"; }
 err() { echo "[vault-manage][ERROR] $*" >&2; }
 
+# Wait until Vault API is responsive and unsealed (or confirm sealed state).
+# Returns 0 if unsealed, 1 if sealed, 2 if unreachable.
+wait_vault_api_ready() {
+  local max_attempts=${1:-15}
+  local attempt=0
+  while [ $attempt -lt $max_attempts ]; do
+    attempt=$((attempt + 1))
+    local status_json
+    status_json=$(docker exec "${CONTAINER_NAME}" vault status -format=json 2>/dev/null) || true
+    if [ -n "$status_json" ]; then
+      local sealed
+      sealed=$(echo "$status_json" | grep -o '"sealed": *[a-z]*' | sed 's/.*: *//')
+      if [ "$sealed" = "false" ]; then
+        return 0
+      elif [ "$sealed" = "true" ]; then
+        return 1
+      fi
+    fi
+    sleep 2
+  done
+  return 2
+}
+
+# Check if Vault is sealed using JSON status (reliable, no text parsing races).
+is_vault_sealed() {
+  local status_json
+  status_json=$(docker exec "${CONTAINER_NAME}" vault status -format=json 2>/dev/null) || true
+  if [ -z "$status_json" ]; then
+    return 0  # Can't reach = treat as sealed
+  fi
+  local sealed
+  sealed=$(echo "$status_json" | grep -o '"sealed": *[a-z]*' | sed 's/.*: *//')
+  [ "$sealed" = "true" ]
+}
+
 ensure_dirs() {
   mkdir -p "${SECRETS_DIR}" "${DATA_DIR}"
   chmod 700 "${SECRETS_DIR}" || true
@@ -55,14 +90,25 @@ health_check() {
   log "✓ Container is running"
   
   # Check vault is initialized
-  if docker exec "${CONTAINER_NAME}" vault status 2>&1 | grep -q "Initialized.*false"; then
+  local status_json
+  status_json=$(docker exec "${CONTAINER_NAME}" vault status -format=json 2>/dev/null) || true
+  if [ -z "$status_json" ]; then
+    err "Cannot reach Vault API"
+    return 1
+  fi
+  
+  local initialized
+  initialized=$(echo "$status_json" | grep -o '"initialized": *[a-z]*' | sed 's/.*: *//')
+  if [ "$initialized" != "true" ]; then
     err "Vault is not initialized - run: $0 bootstrap"
     return 1
   fi
   log "✓ Vault is initialized"
   
   # Check vault is unsealed
-  if docker exec "${CONTAINER_NAME}" vault status 2>&1 | grep -q "Sealed.*true"; then
+  local sealed
+  sealed=$(echo "$status_json" | grep -o '"sealed": *[a-z]*' | sed 's/.*: *//')
+  if [ "$sealed" = "true" ]; then
     err "Vault is sealed - run: $0 unseal"
     return 1
   fi
@@ -116,12 +162,16 @@ start() {
   # Smart start: check if needs bootstrap
   if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
     log "⚠ Vault needs initialization - run: $0 bootstrap"
-  elif docker exec "${CONTAINER_NAME}" vault status 2>&1 | grep -q "Sealed.*true"; then
-    log "⚠ Vault is sealed - run: $0 unseal"
   else
-    log "Vault is ready"
-    # Run health check
-    health_check || true
+    # Wait for API to stabilize after start
+    wait_vault_api_ready 10 || true
+    if is_vault_sealed; then
+      log "⚠ Vault is sealed - run: $0 unseal"
+    else
+      log "Vault is ready"
+      # Run health check
+      health_check || true
+    fi
   fi
 }
 
@@ -217,8 +267,11 @@ ensure_jwt_secret() {
   # Generate and store new secret
   log "Creating JWT signing secret..."
   local JWT_SECRET=$(openssl rand -hex 32)
-  docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN}" \
-       "${CONTAINER_NAME}" vault kv put "${JWT_PATH}" value="${JWT_SECRET}" >/dev/null
+  if ! docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN}" \
+       "${CONTAINER_NAME}" vault kv put "${JWT_PATH}" value="${JWT_SECRET}" >/dev/null 2>&1; then
+    err "Failed to write JWT signing secret to Vault"
+    return 1
+  fi
   log "✓ JWT signing secret created at ${JWT_PATH}"
 }
 
@@ -238,22 +291,75 @@ bootstrap() {
   if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
     log "Initializing vault for first time..."
     start
-    sleep 5  # Wait for vault to be ready
+    log "Waiting for Vault API to become reachable..."
+    if ! wait_vault_api_ready 20; then
+      err "Vault API did not become reachable after start"
+      return 1
+    fi
     init
   else
     log "Vault already initialized"
-    # Just ensure it's running and unsealed
+    # Ensure it's running
     if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
       start
-      sleep 3
+    fi
+    # Wait for Vault API to be reachable after (re)start
+    log "Waiting for Vault API to stabilize..."
+    wait_vault_api_ready 15 || true
+    # Always check if sealed and unseal if needed (using reliable JSON check)
+    if is_vault_sealed; then
+      log "Vault is sealed — unsealing..."
       unseal
+      sleep 2
+      # Verify unseal succeeded
+      if is_vault_sealed; then
+        err "Vault is still sealed after unseal attempt"
+        return 1
+      fi
     else
-      log "Vault already running"
+      log "Vault is already unsealed"
     fi
   fi
-  
+
+  # Verify Vault API is truly ready before configuring
+  log "Confirming Vault API is ready..."
+  if ! wait_vault_api_ready 10; then
+    err "Vault API not ready — cannot continue with bootstrap"
+    return 1
+  fi
+  log "✓ Vault API is responsive and unsealed"
+
+  # Ensure KV v2 secrets engine is enabled
+  local VAULT_TOKEN_VAL
+  VAULT_TOKEN_VAL=$(cat "${SECRETS_DIR}/vault_root_token")
+  if ! docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN_VAL}" \
+       "${CONTAINER_NAME}" vault secrets list 2>/dev/null | grep -q "^secret/"; then
+    log "Enabling KV v2 secrets engine at secret/..."
+    docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN_VAL}" \
+      "${CONTAINER_NAME}" vault secrets enable -path=secret kv-v2 || {
+      err "Failed to enable KV secrets engine"
+      return 1
+    }
+  fi
+  log "✓ KV v2 secrets engine enabled"
+
+  # Ensure AppRole auth method is enabled
+  if ! docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN_VAL}" \
+       "${CONTAINER_NAME}" vault auth list 2>/dev/null | grep -q "approle/"; then
+    log "Enabling AppRole auth method..."
+    docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${VAULT_TOKEN_VAL}" \
+      "${CONTAINER_NAME}" vault auth enable approle || {
+      err "Failed to enable AppRole auth"
+      return 1
+    }
+  fi
+  log "✓ AppRole auth method enabled"
+
   # Ensure JWT signing secret exists (idempotent)
-  ensure_jwt_secret
+  ensure_jwt_secret || {
+    err "Failed to ensure JWT signing secret — is Vault unsealed?"
+    return 1
+  }
   
   # Run auth bootstrap
   log "Bootstrapping authentication (JWT, groups, tokens)..."
