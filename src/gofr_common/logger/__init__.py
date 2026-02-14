@@ -96,11 +96,17 @@ def create_logger(
     if json_format is None:
         json_format = os.environ.get(f"{env_prefix}_LOG_JSON", "false").lower() == "true"
 
+    # Resolve SEQ sink from env if available
+    seq_url = os.environ.get(f"{env_prefix}_SEQ_URL") or None
+    seq_api_key = os.environ.get(f"{env_prefix}_SEQ_API_KEY") or None
+
     return StructuredLogger(
         name=name,
         level=level if level is not None else logging.INFO,
         log_file=log_file,
         json_format=json_format,
+        seq_url=seq_url,
+        seq_api_key=seq_api_key,
     )
 
 

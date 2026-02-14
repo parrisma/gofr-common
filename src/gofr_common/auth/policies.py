@@ -30,6 +30,18 @@ path "secret/metadata/gofr/auth/*" {
 }
 """
 
+# Dedicated logging secrets policy (least privilege for sink credentials)
+POLICY_GOFR_DIG_LOGGING_READ = """
+# Read GOFR-DIG logging sink secrets
+path "secret/data/gofr/config/logging/*" {
+  capabilities = ["read"]
+}
+# Optional metadata listing for operational tooling
+path "secret/metadata/gofr/config/logging/*" {
+  capabilities = ["list", "read"]
+}
+"""
+
 # MCP Service Policy
 # - Read own secrets (OpenRouter keys, etc)
 # - Read global config
@@ -80,4 +92,5 @@ POLICIES = {
     "gofr-mcp-policy": POLICY_MCP_READ,
     "gofr-web-policy": POLICY_WEB_READ,
     "gofr-dig-policy": POLICY_DIG_READ,
+  "gofr-dig-logging-policy": POLICY_GOFR_DIG_LOGGING_READ,
 }

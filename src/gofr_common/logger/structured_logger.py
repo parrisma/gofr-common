@@ -7,12 +7,87 @@ systems and optional file output.
 
 import json
 import logging
+import re
 import sys
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from .interface import Logger
+
+
+SENSITIVE_KEY_PATTERNS = (
+    "token",
+    "secret",
+    "password",
+    "authorization",
+    "api_key",
+    "apikey",
+    "cookie",
+)
+
+SENSITIVE_VALUE_PATTERNS = (
+    re.compile(r"^Bearer\s+[A-Za-z0-9._\-+/=]+$", re.IGNORECASE),
+    re.compile(r"^[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}$"),
+    re.compile(r"^[A-Fa-f0-9]{32,}$"),
+    re.compile(r"^[A-Za-z0-9+/=]{40,}$"),
+)
+
+TRUNCATION_MARKER = "...[truncated]"
+MAX_TEXT_VALUE_LENGTH = 2048
+MAX_COLLECTION_LENGTH = 50
+
+REQUIRED_FAILURE_FIELDS = {
+    "event": "operation_failed",
+    "operation": "unknown",
+    "stage": "unknown",
+    "dependency": "unknown",
+    "cause_type": "unknown",
+    "remediation": "review_error_and_retry_or_check_dependencies",
+}
+
+
+def _key_is_sensitive(key: str) -> bool:
+    lowered = key.lower()
+    return any(pattern in lowered for pattern in SENSITIVE_KEY_PATTERNS)
+
+
+def _looks_sensitive_value(value: str) -> bool:
+    stripped = value.strip()
+    return any(pattern.match(stripped) for pattern in SENSITIVE_VALUE_PATTERNS)
+
+
+def _truncate_string(value: str) -> str:
+    if len(value) <= MAX_TEXT_VALUE_LENGTH:
+        return value
+    return value[:MAX_TEXT_VALUE_LENGTH] + TRUNCATION_MARKER
+
+
+def _sanitize_value(key: str, value: Any) -> Any:
+    if _key_is_sensitive(key):
+        return "[REDACTED]"
+
+    if isinstance(value, str):
+        if _looks_sensitive_value(value):
+            return "[REDACTED]"
+        return _truncate_string(value)
+
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for dict_key, dict_value in list(value.items())[:MAX_COLLECTION_LENGTH]:
+            sanitized[str(dict_key)] = _sanitize_value(str(dict_key), dict_value)
+        if len(value) > MAX_COLLECTION_LENGTH:
+            sanitized["_truncated_items"] = len(value) - MAX_COLLECTION_LENGTH
+        return sanitized
+
+    if isinstance(value, (list, tuple, set)):
+        values = list(value)
+        sanitized_list = [_sanitize_value(key, item) for item in values[:MAX_COLLECTION_LENGTH]]
+        if len(values) > MAX_COLLECTION_LENGTH:
+            sanitized_list.append(f"{TRUNCATION_MARKER}({len(values) - MAX_COLLECTION_LENGTH} items)")
+        return sanitized_list
+
+    return value
 
 
 class JsonFormatter(logging.Formatter):
@@ -46,7 +121,7 @@ class JsonFormatter(logging.Formatter):
 
         for key, value in record.__dict__.items():
             if key not in skip_keys:
-                log_data[key] = value
+                log_data[key] = _sanitize_value(key, value)
 
         return json.dumps(log_data)
 
@@ -74,7 +149,7 @@ class TextFormatter(logging.Formatter):
         extra_args = {}
         for key, value in record.__dict__.items():
             if key not in skip_keys:
-                extra_args[key] = value
+                extra_args[key] = _sanitize_value(key, value)
 
         if extra_args:
             s += " " + " ".join(f"{k}={v}" for k, v in extra_args.items())
@@ -90,16 +165,19 @@ class StructuredLogger(Logger):
     - Human-readable text formatting for development
     - File output with automatic rotation
     - Session tracking across all log entries
+    - Optional SEQ ingestion (auto-enabled when seq_url is set)
 
     Example:
         # Development mode (text output)
         logger = StructuredLogger(name="gofr-plot")
 
-        # Production mode (JSON output to file)
+        # Production mode (JSON output to file + SEQ)
         logger = StructuredLogger(
             name="gofr-plot",
             json_format=True,
-            log_file="/var/log/gofr-plot.log"
+            log_file="/var/log/gofr-plot.log",
+            seq_url="http://gofr-seq:5341",
+            seq_api_key="...",
         )
 
         logger.info("Request processed", request_id="abc123", duration_ms=45)
@@ -111,6 +189,8 @@ class StructuredLogger(Logger):
         level: int = logging.INFO,
         log_file: Optional[str] = None,
         json_format: bool = False,
+        seq_url: Optional[str] = None,
+        seq_api_key: Optional[str] = None,
     ):
         """Initialize the structured logger.
 
@@ -119,6 +199,8 @@ class StructuredLogger(Logger):
             level: Logging level (logging.DEBUG, logging.INFO, etc.)
             log_file: Optional file path for log output
             json_format: If True, output logs as JSON; otherwise use text format
+            seq_url: Optional SEQ ingestion URL (e.g., http://gofr-seq:5341)
+            seq_api_key: Optional SEQ API key with Ingest permission
         """
         self._name = name
         self._session_id = str(uuid.uuid4())[:8]
@@ -154,6 +236,20 @@ class StructuredLogger(Logger):
                 # Fallback to console if file cannot be opened
                 print(f"Failed to setup log file {log_file}: {e}", file=sys.stderr)
 
+        # SEQ Handler (if configured)
+        if seq_url:
+            try:
+                from .seq_handler import SeqHandler
+
+                seq_handler = SeqHandler(
+                    server_url=seq_url,
+                    api_key=seq_api_key,
+                )
+                seq_handler.setLevel(level)
+                self._logger.addHandler(seq_handler)
+            except Exception as e:
+                print(f"Failed to setup SEQ handler for {seq_url}: {e}", file=sys.stderr)
+
     def get_session_id(self) -> str:
         """Get the current session ID."""
         return self._session_id
@@ -161,6 +257,10 @@ class StructuredLogger(Logger):
     def _log(self, level: int, message: str, **kwargs: Any) -> None:
         """Internal logging method with extra kwargs handling."""
         extra = {"session_id": self._session_id}
+
+        # Merge default extra fields (e.g. build_number) set externally
+        if hasattr(self, "_default_extra"):
+            extra.update(self._default_extra)
 
         # Filter out reserved LogRecord attributes to prevent overwrite errors
         reserved_keys = {
@@ -173,10 +273,14 @@ class StructuredLogger(Logger):
 
         for k, v in kwargs.items():
             if k not in reserved_keys:
-                extra[k] = v
+                extra[k] = _sanitize_value(k, v)
             else:
                 # Prefix reserved keys to preserve them but avoid collision
-                extra[f"_{k}"] = v
+                extra[f"_{k}"] = _sanitize_value(k, v)
+
+        if level >= logging.WARNING:
+            for req_key, default_value in REQUIRED_FAILURE_FIELDS.items():
+                extra.setdefault(req_key, default_value)
 
         self._logger.log(level, message, extra=extra)
 

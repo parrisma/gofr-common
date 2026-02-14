@@ -5,7 +5,7 @@ Provides "God Mode" capabilities to configure Vault Auth Methods and Roles.
 Used by bootstrap and setup scripts, NOT by runtime applications.
 """
 
-from typing import Dict
+from typing import Dict, List
 
 from .backends.vault_client import VaultClient, VaultError
 from .policies import POLICIES
@@ -63,6 +63,7 @@ class VaultAdmin:
         self,
         service_name: str,
         policy_name: str,
+        additional_policy_names: List[str] | None = None,
         token_ttl: str = "1h",
         token_max_ttl: str = "24h"
     ) -> None:
@@ -71,13 +72,17 @@ class VaultAdmin:
         Args:
             service_name: Name of the role (e.g. 'gofr-mcp')
             policy_name: Name of the policy to attach (e.g. 'gofr-mcp-policy')
+            additional_policy_names: Additional policy names to attach
             token_ttl: Default TTL for tokens issued to this role
             token_max_ttl: Max TTL for tokens issued to this role
         """
         try:
+            token_policies = ["default", policy_name]
+            if additional_policy_names:
+                token_policies.extend(additional_policy_names)
             self._hvac.auth.approle.create_or_update_approle(
                 role_name=service_name,
-                token_policies=["default", policy_name],
+                token_policies=token_policies,
                 token_ttl=token_ttl,
                 token_max_ttl=token_max_ttl,
                 bind_secret_id=True,
