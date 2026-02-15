@@ -11,9 +11,9 @@ QUICK START:
 
     # Or source environment manually:
     cd /path/to/gofr-project
-    set -a && source lib/gofr-common/config/gofr_ports.env && \\
-             source docker/.env && set +a
+    set -a && source lib/gofr-common/config/gofr_ports.env && set +a
     export VAULT_TOKEN=$(cat secrets/vault_root_token)
+    export GOFR_JWT_SECRET=$(vault kv get -field=value secret/gofr/config/jwt-signing-secret)
 
     # List groups:
     python auth_manager.py --backend vault groups list

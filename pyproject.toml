@@ -23,7 +23,6 @@ dependencies = [
     "httpx==0.28.1",
     # MCP OpenAPI Wrapper
     "mcpo==0.0.19",
-    "pyright[nodejs]==1.1.407",
     "python-dotenv==1.1.0",
     "hvac==2.4.0",
 ]
@@ -36,7 +35,7 @@ dev = [
     "pytest-cov==7.0.0",
     "black==25.11.0",
     "ruff==0.14.8",
-    "pyright==1.1.407",
+    "pyright[nodejs]==1.1.407",
 ]
 
 # Optional: PDF/document rendering (needed by gofr-doc, gofr-dig)
@@ -60,6 +59,9 @@ vault = [
 all = [
     "gofr-common[dev,pdf,plotting,vault]",
 ]
+
+[project.scripts]
+gofr-security-scan = "gofr_common.security_scan.cli:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -114,7 +116,7 @@ dev = [
     "pytest-cov==7.0.0",
     "black==25.11.0",
     "ruff==0.14.8",
-    "pyright==1.1.407",
+    "pyright[nodejs]==1.1.407",
     "bandit==1.9.2",
 ]
 

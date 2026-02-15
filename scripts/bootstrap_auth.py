@@ -87,6 +87,22 @@ def log_warn(message: str, quiet: bool = False) -> None:
         print(f"[WARN] {message}", file=sys.stderr)
 
 
+def _env_flag(prefix: str, suffix: str, default: bool = True) -> bool:
+    """Read a boolean flag from environment.
+
+    Accepts true/false variants: 1/0, true/false, yes/no, on/off.
+    """
+    raw_value = os.environ.get(f"{prefix}_{suffix}")
+    if raw_value is None:
+        return default
+    normalized = raw_value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def install_vault_policies(prefix: str, quiet: bool = False) -> bool:
     """Install Vault policies if using Vault backend.
     
@@ -98,6 +114,10 @@ def install_vault_policies(prefix: str, quiet: bool = False) -> bool:
         True if policies were installed or not needed, False on error
     """
     backend = os.environ.get(f"{prefix}_AUTH_BACKEND", "vault")
+
+    if not _env_flag(prefix, "BOOTSTRAP_INSTALL_POLICIES", default=True):
+        log_info("Skipping Vault policy installation (disabled by environment)", quiet)
+        return True
     
     # Only install policies for Vault backend
     if backend != "vault":
@@ -140,6 +160,10 @@ def store_jwt_secret_in_vault(prefix: str, jwt_secret: str, quiet: bool = False)
         True if stored successfully, False on error
     """
     backend = os.environ.get(f"{prefix}_AUTH_BACKEND", "vault")
+
+    if not _env_flag(prefix, "BOOTSTRAP_STORE_JWT_SECRET", default=True):
+        log_info("Skipping JWT secret storage (disabled by environment)", quiet)
+        return True
     
     # Only store in Vault backend
     if backend != "vault":

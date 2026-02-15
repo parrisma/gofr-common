@@ -14,13 +14,17 @@ path "secret/data/global/config" {
 }
 """
 
-# Shared config policy - JWT signing secret etc
-POLICY_GOFR_CONFIG_READ = """
+# Shared runtime config policy (read-only)
+POLICY_GOFR_CONFIG_RUNTIME_READ = """
 # Read GOFR shared config (JWT signing, etc)
 path "secret/data/gofr/config/*" {
   capabilities = ["read"]
 }
-# Read/write GOFR auth data (groups, tokens, etc) for authenticated services
+"""
+
+# Admin auth management policy (write access)
+POLICY_GOFR_AUTH_ADMIN = """
+# Read/write GOFR auth data (groups, tokens, etc) for admin control role
 path "secret/data/gofr/auth/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
@@ -29,6 +33,9 @@ path "secret/metadata/gofr/auth/*" {
   capabilities = ["list", "read"]
 }
 """
+
+# Backward-compatible alias for existing imports.
+POLICY_GOFR_CONFIG_READ = POLICY_GOFR_CONFIG_RUNTIME_READ
 
 # Dedicated logging secrets policy (least privilege for sink credentials)
 POLICY_GOFR_DIG_LOGGING_READ = """
@@ -87,10 +94,16 @@ path "secret/data/tokens/dig" {
 }
 """ + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ
 
+# Admin Control Policy
+# - Read GOFR shared config
+# - Read/write GOFR auth data
+POLICY_ADMIN_CONTROL = POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_RUNTIME_READ + POLICY_GOFR_AUTH_ADMIN
+
 # Map of policy name -> HCL content
 POLICIES = {
     "gofr-mcp-policy": POLICY_MCP_READ,
     "gofr-web-policy": POLICY_WEB_READ,
     "gofr-dig-policy": POLICY_DIG_READ,
-  "gofr-dig-logging-policy": POLICY_GOFR_DIG_LOGGING_READ,
+    "gofr-dig-logging-policy": POLICY_GOFR_DIG_LOGGING_READ,
+    "gofr-admin-control-policy": POLICY_ADMIN_CONTROL,
 }

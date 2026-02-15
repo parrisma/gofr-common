@@ -51,6 +51,11 @@ from gofr_common.logger import (
     create_logger,
     get_logger,
 )
+from gofr_common.security_scan import (
+    SecurityScanConfig,
+    SecurityScanService,
+    TrivyExecutionError,
+)
 
 try:
     from gofr_common.mcp import (
@@ -106,6 +111,10 @@ __all__ = [
     "SecurityError",
     "ConfigurationError",
     "RegistryError",
+    # Security scan
+    "SecurityScanConfig",
+    "SecurityScanService",
+    "TrivyExecutionError",
     # MCP
     "json_text",
     "success_response",
