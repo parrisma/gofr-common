@@ -92,16 +92,34 @@ require_vault_token() {
   export VAULT_TOKEN
 }
 
+seq_default_url() {
+  local host="${GOFR_SEQ_HOST:-gofr-seq}"
+  local port="${GOFR_SEQ_INGEST_PORT:-5341}"
+  echo "http://${host}:${port}"
+}
+
 require_seq_inputs() {
   local resolved_url="${GOFR_SEQ_URL:-${GOFR_DIG_SEQ_URL:-${SEQ_URL:-}}}"
   local resolved_key="${GOFR_SEQ_API_KEY:-${GOFR_DIG_SEQ_API_KEY:-${SEQ_API_KEY:-}}}"
 
   if [[ -z "${resolved_url}" ]]; then
-    read -r -p "Enter SEQ URL (e.g. http://gofr-seq:5341): " resolved_url
+    local default_url
+    default_url="$(seq_default_url)"
+    if [[ -t 0 ]]; then
+      local input_url=""
+      read -r -p "Enter SEQ URL [${default_url}]: " input_url
+      resolved_url="${input_url:-${default_url}}"
+    else
+      resolved_url="${default_url}"
+      info "SEQ URL not provided; defaulting to ${default_url}"
+    fi
   fi
 
   if [[ -z "${resolved_key}" ]]; then
-    read -r -s -p "Enter SEQ API key: " resolved_key
+    if [[ ! -t 0 ]]; then
+      fail "SEQ API key is required. Set GOFR_SEQ_API_KEY (or GOFR_DIG_SEQ_API_KEY/SEQ_API_KEY) and re-run."
+    fi
+    read -r -s -p "Enter SEQ API key (from SEQ UI > Settings > API keys): " resolved_key
     echo "" >&2
   fi
 
