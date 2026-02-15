@@ -15,7 +15,8 @@
 #   - Requires a Vault token (operator/root) to write secrets.
 #
 # Usage:
-#   ./lib/gofr-common/scripts/bootstrap_seq.sh
+#   ./lib/gofr-common/scripts/bootstrap_seq.sh            # write if missing
+#   ./lib/gofr-common/scripts/bootstrap_seq.sh --force     # overwrite existing
 #
 # Optional env vars:
 #   GOFR_SEQ_URL | GOFR_DIG_SEQ_URL | SEQ_URL
@@ -156,13 +157,61 @@ vault_kv_put() {
     "${container}" vault kv put "${path}" "${field}=${value}" >/dev/null
 }
 
+# Read a single field from a Vault KV secret. Returns 0 and prints the value
+# if the secret exists, returns 1 if missing/error.
+vault_kv_get_field() {
+  local path="$1"
+  local field="$2"
+
+  if command -v vault >/dev/null 2>&1 && [[ -n "${VAULT_ADDR:-}" ]]; then
+    VAULT_TOKEN="${VAULT_TOKEN}" vault kv get -field="${field}" "${path}" 2>/dev/null
+    return $?
+  fi
+
+  local container="gofr-vault"
+  if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+    return 1
+  fi
+
+  docker exec \
+    -e VAULT_ADDR="${VAULT_ADDR}" \
+    -e VAULT_TOKEN="${VAULT_TOKEN}" \
+    "${container}" vault kv get -field="${field}" "${path}" 2>/dev/null
+}
+
+# Check whether both SEQ secrets already exist in Vault. Returns 0 if both
+# are present (idempotent skip), 1 otherwise.
+secrets_already_exist() {
+  local url_val key_val
+  url_val="$(vault_kv_get_field "secret/gofr/config/logging/seq-url" "value" 2>/dev/null)" || return 1
+  key_val="$(vault_kv_get_field "secret/gofr/config/logging/seq-api-key" "value" 2>/dev/null)" || return 1
+
+  if [[ -n "${url_val}" && -n "${key_val}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+FORCE=false
+for arg in "$@"; do
+  case "$arg" in
+    --force|-f) FORCE=true ;;
+  esac
+done
+
 main() {
   info "Bootstrapping SEQ logging secrets into Vault"
 
   require_vault_token
-  require_seq_inputs
-
   export VAULT_ADDR="${VAULT_ADDR:-$(vault_local_addr)}"
+
+  # Idempotency: skip if secrets already exist (unless --force)
+  if [[ "${FORCE}" != "true" ]] && secrets_already_exist; then
+    ok "SEQ secrets already exist in Vault (use --force to overwrite)"
+    return 0
+  fi
+
+  require_seq_inputs
 
   info "Writing seq-url to Vault (path=secret/gofr/config/logging/seq-url)"
   vault_kv_put "secret/gofr/config/logging/seq-url" "value" "${GOFR_SEQ_URL}" || fail "Failed to write seq-url to Vault"
@@ -176,4 +225,4 @@ main() {
   info "Next: restart services to pick up secrets (e.g. ./scripts/start-prod.sh --down && ./scripts/start-prod.sh)"
 }
 
-main "$@"
+main
