@@ -29,6 +29,8 @@ Operational runbook for the hard cutover to split runtime Vault permissions from
 ## Expected Policy Model
 - Runtime policies (`gofr-mcp-policy`, `gofr-web-policy`, `gofr-dig-policy`):
   - `read` on `secret/data/gofr/config/*`
+  - `read` on `secret/data/gofr/auth/*`
+  - optional `list/read` on `secret/metadata/gofr/auth/*`
   - no write access to `secret/data/gofr/auth/*`
 - Admin policy (`gofr-admin-control-policy`):
   - auth CRUD/list on `secret/data/gofr/auth/*`

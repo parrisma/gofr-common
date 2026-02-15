@@ -41,7 +41,9 @@ That is admin-grade authority and violates least privilege for runtime services.
     - Any additional minimal admin control paths needed for auth operations
 
 ### 2) Runtime policy composition
-- `gofr-mcp-policy`, `gofr-web-policy`, `gofr-dig-policy` include runtime config read only.
+- `gofr-mcp-policy`, `gofr-web-policy`, `gofr-dig-policy` include:
+  - runtime config read, and
+  - runtime auth-store read (for token verification / group membership checks)
 - Runtime policies must not include `POLICY_GOFR_AUTH_ADMIN`.
 
 ### 3) Admin control role and policy

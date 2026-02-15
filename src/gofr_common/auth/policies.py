@@ -22,6 +22,19 @@ path "secret/data/gofr/config/*" {
 }
 """
 
+# Runtime auth-read policy (read-only)
+# Needed for services to verify tokens and read group membership.
+POLICY_GOFR_AUTH_RUNTIME_READ = """
+# Read GOFR auth data (groups, tokens, indexes, etc)
+path "secret/data/gofr/auth/*" {
+  capabilities = ["read"]
+}
+# Optional metadata listing for auth paths (read-only)
+path "secret/metadata/gofr/auth/*" {
+  capabilities = ["list", "read"]
+}
+"""
+
 # Admin auth management policy (write access)
 POLICY_GOFR_AUTH_ADMIN = """
 # Read/write GOFR auth data (groups, tokens, etc) for admin control role
@@ -62,7 +75,7 @@ path "secret/data/services/mcp/*" {
 path "secret/data/tokens/mcp" {
   capabilities = ["read"]
 }
-""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ
+""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ + POLICY_GOFR_AUTH_RUNTIME_READ
 
 # Web Service Policy
 # - Read own secrets (Session keys, etc)
@@ -77,7 +90,7 @@ path "secret/data/services/web/*" {
 path "secret/data/tokens/web" {
   capabilities = ["read"]
 }
-""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ
+""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ + POLICY_GOFR_AUTH_RUNTIME_READ
 
 # DIG Service Policy
 # - Read own secrets (API keys, etc)
@@ -92,7 +105,7 @@ path "secret/data/services/dig/*" {
 path "secret/data/tokens/dig" {
   capabilities = ["read"]
 }
-""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ
+""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ + POLICY_GOFR_AUTH_RUNTIME_READ
 
 # Admin Control Policy
 # - Read GOFR shared config
