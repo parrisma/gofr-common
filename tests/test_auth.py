@@ -104,7 +104,7 @@ class TestAuthServiceInit:
 
     def test_init_with_env_var(self, tmp_path: Path):
         """Test initialization with environment variable."""
-        with patch.dict(os.environ, {"GOFR_TEST_JWT_SECRET": "env-secret"}):
+        with patch.dict(os.environ, {"GOFR_JWT_SECRET": "env-secret"}):
             token_store, group_store = _create_vault_stores()
             group_registry = GroupRegistry(store=group_store)
             auth = AuthService(

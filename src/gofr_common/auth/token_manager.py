@@ -36,7 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--env-prefix",
         default=None,
         help="Environment variable prefix (e.g. GOFR_DIG). "
-        "JWT secret is read from {PREFIX}_JWT_SECRET.",
+        "JWT secret is always read from GOFR_JWT_SECRET (system-wide).",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
@@ -73,26 +73,12 @@ def _get_auth_service(
     """Create an AuthService from CLI arguments."""
     import os
 
-    # Resolve JWT secret from environment
-    secret: Optional[str] = None
-    if env_prefix:
-        prefix = env_prefix.upper().replace("-", "_")
-        env_var = f"{prefix}_JWT_SECRET"
-        secret = os.environ.get(env_var)
-        if not secret:
-            print(f"ERROR: {env_var} environment variable is not set", file=sys.stderr)
-            print(f"Set it with: export {env_var}=<your-secret>", file=sys.stderr)
-            sys.exit(1)
-    else:
-        # Try common fallbacks
-        for var in ("GOFR_JWT_SECRET", "JWT_SECRET"):
-            secret = os.environ.get(var)
-            if secret:
-                break
-        if not secret:
-            print("ERROR: No JWT secret found in environment", file=sys.stderr)
-            print("Set --env-prefix or GOFR_JWT_SECRET env var", file=sys.stderr)
-            sys.exit(1)
+    # Resolve JWT secret from environment — always system-wide
+    secret = os.environ.get("GOFR_JWT_SECRET")
+    if not secret:
+        print("ERROR: GOFR_JWT_SECRET environment variable is not set", file=sys.stderr)
+        print("Set it with: export GOFR_JWT_SECRET=<your-secret>", file=sys.stderr)
+        sys.exit(1)
 
     return AuthService(
         secret_key=secret,

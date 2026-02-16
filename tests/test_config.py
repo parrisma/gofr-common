@@ -39,12 +39,16 @@ class TestServerSettings:
 
     def test_from_env_default_prefix(self):
         """Test loading from environment with default prefix"""
-        with patch.dict(os.environ, {
-            "GOFR_HOST": "127.0.0.1",
-            "GOFR_MCP_PORT": "9001",
-            "GOFR_WEB_PORT": "9000",
-            "GOFR_MCPO_PORT": "9002",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_HOST": "127.0.0.1",
+                "GOFR_MCP_PORT": "9001",
+                "GOFR_WEB_PORT": "9000",
+                "GOFR_MCPO_PORT": "9002",
+            },
+            clear=False,
+        ):
             settings = ServerSettings.from_env()
             assert settings.host == "127.0.0.1"
             assert settings.mcp_port == 9001
@@ -53,12 +57,16 @@ class TestServerSettings:
 
     def test_from_env_custom_prefix(self):
         """Test loading from environment with custom prefix"""
-        with patch.dict(os.environ, {
-            "GOFR_PLOT_HOST": "localhost",
-            "GOFR_PLOT_MCP_PORT": "8050",
-            "GOFR_PLOT_WEB_PORT": "8052",
-            "GOFR_PLOT_MCPO_PORT": "8051",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_PLOT_HOST": "localhost",
+                "GOFR_PLOT_MCP_PORT": "8050",
+                "GOFR_PLOT_WEB_PORT": "8052",
+                "GOFR_PLOT_MCPO_PORT": "8051",
+            },
+            clear=False,
+        ):
             settings = ServerSettings.from_env(prefix="GOFR_PLOT")
             assert settings.host == "localhost"
             assert settings.mcp_port == 8050
@@ -112,10 +120,14 @@ class TestAuthSettings:
 
     def test_from_env(self):
         """Test loading from environment"""
-        with patch.dict(os.environ, {
-            "GOFR_DOC_JWT_SECRET": "env-secret-key",
-            "GOFR_DOC_TOKEN_STORE": "/data/tokens.json",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_JWT_SECRET": "env-secret-key",
+                "GOFR_DOC_TOKEN_STORE": "/data/tokens.json",
+            },
+            clear=False,
+        ):
             settings = AuthSettings.from_env(prefix="GOFR_DOC", require_auth=True)
             assert settings.jwt_secret == "env-secret-key"
             assert settings.token_store_path == Path("/data/tokens.json")
@@ -141,9 +153,13 @@ class TestStorageSettings:
 
     def test_from_env_with_env_var(self):
         """Test loading data dir from environment"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/custom/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/custom/data",
+            },
+            clear=False,
+        ):
             settings = StorageSettings.from_env()
             assert settings.data_dir == Path("/custom/data")
             assert settings.storage_dir == Path("/custom/data/storage")
@@ -155,9 +171,7 @@ class TestStorageSettings:
         env = os.environ.copy()
         env.pop("GOFR_DATA_DIR", None)
         with patch.dict(os.environ, env, clear=True):
-            settings = StorageSettings.from_env(
-                project_root=Path("/home/user/project")
-            )
+            settings = StorageSettings.from_env(project_root=Path("/home/user/project"))
             assert settings.data_dir == Path("/home/user/project/data")
 
     def test_ensure_directories(self):
@@ -206,10 +220,14 @@ class TestLogSettings:
 
     def test_from_env(self):
         """Test loading from environment"""
-        with patch.dict(os.environ, {
-            "GOFR_LOG_LEVEL": "debug",
-            "GOFR_LOG_FORMAT": "JSON",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_LOG_LEVEL": "debug",
+                "GOFR_LOG_FORMAT": "JSON",
+            },
+            clear=False,
+        ):
             settings = LogSettings.from_env()
             assert settings.level == "DEBUG"  # uppercased
             assert settings.format == "json"  # lowercased
@@ -220,12 +238,16 @@ class TestSettings:
 
     def test_from_env_no_auth(self):
         """Test loading settings without auth requirement"""
-        with patch.dict(os.environ, {
-            "TEST_HOST": "127.0.0.1",
-            "TEST_MCP_PORT": "9001",
-            "TEST_DATA_DIR": "/test/data",
-            "TEST_LOG_LEVEL": "DEBUG",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "TEST_HOST": "127.0.0.1",
+                "TEST_MCP_PORT": "9001",
+                "TEST_DATA_DIR": "/test/data",
+                "TEST_LOG_LEVEL": "DEBUG",
+            },
+            clear=False,
+        ):
             settings = Settings.from_env(prefix="TEST", require_auth=False)
             assert settings.server.host == "127.0.0.1"
             assert settings.server.mcp_port == 9001
@@ -235,10 +257,14 @@ class TestSettings:
 
     def test_from_env_with_auth(self):
         """Test loading settings with auth requirement"""
-        with patch.dict(os.environ, {
-            "GOFR_JWT_SECRET": "test-secret",
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_JWT_SECRET": "test-secret",
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             settings = Settings.from_env(prefix="GOFR", require_auth=True)
             assert settings.auth.jwt_secret == "test-secret"
             assert settings.auth.require_auth is True
@@ -246,9 +272,13 @@ class TestSettings:
     def test_resolve_defaults(self):
         """Test that resolve_defaults sets token store path"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {
-                "GOFR_DATA_DIR": tmpdir,
-            }, clear=False):
+            with patch.dict(
+                os.environ,
+                {
+                    "GOFR_DATA_DIR": tmpdir,
+                },
+                clear=False,
+            ):
                 settings = Settings.from_env(prefix="GOFR", require_auth=False)
                 assert settings.auth.token_store_path is None
 
@@ -273,9 +303,13 @@ class TestGetSettings:
     def test_get_settings_creates_instance(self):
         """Test that get_settings creates a new instance"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {
-                "GOFR_DATA_DIR": tmpdir,
-            }, clear=False):
+            with patch.dict(
+                os.environ,
+                {
+                    "GOFR_DATA_DIR": tmpdir,
+                },
+                clear=False,
+            ):
                 settings = get_settings(prefix="GOFR", require_auth=False)
                 assert isinstance(settings, Settings)
                 assert settings.storage.data_dir == Path(tmpdir)
@@ -283,9 +317,13 @@ class TestGetSettings:
     def test_get_settings_returns_same_instance(self):
         """Test that get_settings returns cached instance"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch.dict(os.environ, {
-                "GOFR_DATA_DIR": tmpdir,
-            }, clear=False):
+            with patch.dict(
+                os.environ,
+                {
+                    "GOFR_DATA_DIR": tmpdir,
+                },
+                clear=False,
+            ):
                 settings1 = get_settings(prefix="GOFR", require_auth=False)
                 settings2 = get_settings(prefix="GOFR", require_auth=False)
                 assert settings1 is settings2
@@ -294,10 +332,14 @@ class TestGetSettings:
         """Test that different prefixes return different instances"""
         with tempfile.TemporaryDirectory() as tmpdir1:
             with tempfile.TemporaryDirectory() as tmpdir2:
-                with patch.dict(os.environ, {
-                    "PREFIX1_DATA_DIR": tmpdir1,
-                    "PREFIX2_DATA_DIR": tmpdir2,
-                }, clear=False):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "PREFIX1_DATA_DIR": tmpdir1,
+                        "PREFIX2_DATA_DIR": tmpdir2,
+                    },
+                    clear=False,
+                ):
                     settings1 = get_settings(prefix="PREFIX1", require_auth=False)
                     settings2 = get_settings(prefix="PREFIX2", require_auth=False)
                     assert settings1 is not settings2
@@ -307,15 +349,23 @@ class TestGetSettings:
     def test_get_settings_reload(self):
         """Test that reload=True creates new instance"""
         with tempfile.TemporaryDirectory() as tmpdir1:
-            with patch.dict(os.environ, {
-                "GOFR_DATA_DIR": tmpdir1,
-            }, clear=False):
+            with patch.dict(
+                os.environ,
+                {
+                    "GOFR_DATA_DIR": tmpdir1,
+                },
+                clear=False,
+            ):
                 settings1 = get_settings(prefix="GOFR", require_auth=False)
 
             with tempfile.TemporaryDirectory() as tmpdir2:
-                with patch.dict(os.environ, {
-                    "GOFR_DATA_DIR": tmpdir2,
-                }, clear=False):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "GOFR_DATA_DIR": tmpdir2,
+                    },
+                    clear=False,
+                ):
                     settings2 = get_settings(prefix="GOFR", require_auth=False, reload=True)
                     assert settings1 is not settings2
                     assert settings2.storage.data_dir == Path(tmpdir2)
@@ -324,10 +374,14 @@ class TestGetSettings:
         """Test resetting specific prefix"""
         with tempfile.TemporaryDirectory() as tmpdir1:
             with tempfile.TemporaryDirectory() as tmpdir2:
-                with patch.dict(os.environ, {
-                    "P1_DATA_DIR": tmpdir1,
-                    "P2_DATA_DIR": tmpdir2,
-                }, clear=False):
+                with patch.dict(
+                    os.environ,
+                    {
+                        "P1_DATA_DIR": tmpdir1,
+                        "P2_DATA_DIR": tmpdir2,
+                    },
+                    clear=False,
+                ):
                     get_settings(prefix="P1", require_auth=False)
                     s2_original = get_settings(prefix="P2", require_auth=False)
 
@@ -353,52 +407,80 @@ class TestConfig:
 
     def test_get_data_dir_from_env(self):
         """Test getting data dir from environment"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/custom/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/custom/data",
+            },
+            clear=False,
+        ):
             assert Config.get_data_dir() == Path("/custom/data")
 
     def test_get_data_dir_custom_prefix(self):
         """Test getting data dir with custom prefix"""
         Config.set_env_prefix("GOFR_PLOT")
-        with patch.dict(os.environ, {
-            "GOFR_PLOT_DATA_DIR": "/plot/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_PLOT_DATA_DIR": "/plot/data",
+            },
+            clear=False,
+        ):
             assert Config.get_data_dir() == Path("/plot/data")
 
     def test_get_storage_dir(self):
         """Test getting storage dir"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             assert Config.get_storage_dir() == Path("/data/storage")
 
     def test_get_sessions_dir(self):
         """Test getting sessions dir"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             assert Config.get_sessions_dir() == Path("/data/sessions")
 
     def test_get_proxy_dir(self):
         """Test getting proxy dir"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             assert Config.get_proxy_dir() == Path("/data/storage")
 
     def test_get_auth_dir(self):
         """Test getting auth dir"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             assert Config.get_auth_dir() == Path("/data/auth")
 
     def test_get_token_store_path(self):
         """Test getting token store path"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             assert Config.get_token_store_path() == Path("/data/auth/tokens.json")
 
     def test_test_mode(self):
@@ -422,9 +504,13 @@ class TestCreateConfigClass:
         """Test creating a config class with custom prefix"""
         PlotConfig = create_config_class("GOFR_PLOT")
 
-        with patch.dict(os.environ, {
-            "GOFR_PLOT_DATA_DIR": "/plot/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_PLOT_DATA_DIR": "/plot/data",
+            },
+            clear=False,
+        ):
             assert PlotConfig.get_data_dir() == Path("/plot/data")
 
     def test_multiple_config_classes_independent(self):
@@ -432,10 +518,14 @@ class TestCreateConfigClass:
         PlotConfig = create_config_class("GOFR_PLOT")
         DocConfig = create_config_class("GOFR_DOC")
 
-        with patch.dict(os.environ, {
-            "GOFR_PLOT_DATA_DIR": "/plot/data",
-            "GOFR_DOC_DATA_DIR": "/doc/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_PLOT_DATA_DIR": "/plot/data",
+                "GOFR_DOC_DATA_DIR": "/doc/data",
+            },
+            clear=False,
+        ):
             assert PlotConfig.get_data_dir() == Path("/plot/data")
             assert DocConfig.get_data_dir() == Path("/doc/data")
 
@@ -455,45 +545,65 @@ class TestConvenienceFunctions:
 
     def test_get_default_storage_dir(self):
         """Test get_default_storage_dir returns string"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             result = get_default_storage_dir()
             assert isinstance(result, str)
             assert result == "/data/storage"
 
     def test_get_default_token_store_path(self):
         """Test get_default_token_store_path returns string"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             result = get_default_token_store_path()
             assert isinstance(result, str)
             assert result == "/data/auth/tokens.json"
 
     def test_get_default_sessions_dir(self):
         """Test get_default_sessions_dir returns string"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             result = get_default_sessions_dir()
             assert isinstance(result, str)
             assert result == "/data/sessions"
 
     def test_get_default_proxy_dir(self):
         """Test get_default_proxy_dir returns string"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             result = get_default_proxy_dir()
             assert isinstance(result, str)
             assert result == "/data/storage"
 
     def test_get_public_storage_dir(self):
         """Test get_public_storage_dir returns string"""
-        with patch.dict(os.environ, {
-            "GOFR_DATA_DIR": "/data",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_DATA_DIR": "/data",
+            },
+            clear=False,
+        ):
             result = get_public_storage_dir()
             assert isinstance(result, str)
             assert result == "/data/storage/public"
@@ -510,11 +620,15 @@ class TestBaseConfig:
         assert config.project_root.exists()
 
     def test_from_env_reads_prefix(self):
-        with patch.dict(os.environ, {
-            "GOFR_ENV": "test",
-            "GOFR_LOG_LEVEL": "debug",
-            "GOFR_LOG_FORMAT": "json",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_ENV": "test",
+                "GOFR_LOG_LEVEL": "debug",
+                "GOFR_LOG_FORMAT": "json",
+            },
+            clear=False,
+        ):
             cfg = BaseConfig.from_env()
             assert cfg.env == "TEST"
             assert cfg.log_level == "DEBUG"
@@ -529,16 +643,20 @@ class TestInfrastructureConfig:
     """Tests for InfrastructureConfig"""
 
     def test_loads_infra_from_env(self):
-        with patch.dict(os.environ, {
-            "GOFR_CHROMA_HOST": "chroma.local",
-            "GOFR_CHROMA_PORT": "9100",
-            "GOFR_NEO4J_HOST": "neo4j.local",
-            "GOFR_NEO4J_BOLT_PORT": "7787",
-            "GOFR_NEO4J_HTTP_PORT": "7574",
-            "GOFR_VAULT_URL": "https://vault.local",
-            "GOFR_VAULT_TOKEN": "token",
-            "GOFR_VAULT_PATH_PREFIX": "gofr/test",
-        }, clear=False):
+        with patch.dict(
+            os.environ,
+            {
+                "GOFR_CHROMA_HOST": "chroma.local",
+                "GOFR_CHROMA_PORT": "9100",
+                "GOFR_NEO4J_HOST": "neo4j.local",
+                "GOFR_NEO4J_BOLT_PORT": "7787",
+                "GOFR_NEO4J_HTTP_PORT": "7574",
+                "GOFR_VAULT_URL": "https://vault.local",
+                "GOFR_VAULT_TOKEN": "token",
+                "GOFR_VAULT_PATH_PREFIX": "gofr/test",
+            },
+            clear=False,
+        ):
             cfg = InfrastructureConfig.from_env()
             assert cfg.chroma_host == "chroma.local"
             assert cfg.chroma_port == 9100

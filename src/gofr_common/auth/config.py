@@ -60,7 +60,8 @@ def resolve_auth_config(
         return None, False
 
     # Environment variable names
-    secret_env = f"{prefix}_JWT_SECRET"
+    # JWT secret is system-wide (tokens shared across all GOFR services)
+    secret_env = "GOFR_JWT_SECRET"
     env_env = f"{prefix}_ENV"
 
     # Resolve JWT secret with priority chain
@@ -139,7 +140,8 @@ def resolve_jwt_secret_for_cli(
         ValueError: If no secret can be resolved and exit_on_missing=False
     """
     prefix = env_prefix.upper().replace("-", "_")
-    secret_env = f"{prefix}_JWT_SECRET"
+    # JWT secret is system-wide (tokens shared across all GOFR services)
+    secret_env = "GOFR_JWT_SECRET"
 
     if logger is None:
         logger_name = prefix.lower().replace("_", "-") + "-auth-config"

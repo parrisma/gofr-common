@@ -88,7 +88,7 @@ class AuthSettings:
         if self.require_auth and not self.jwt_secret:
             raise ValueError(
                 "JWT secret is required when authentication is enabled. "
-                "Set {prefix}_JWT_SECRET environment variable or provide via --jwt-secret"
+                "Set GOFR_JWT_SECRET environment variable or provide via --jwt-secret"
             )
 
         # Convert string path to Path object
@@ -109,12 +109,12 @@ class AuthSettings:
             require_auth: Whether authentication is required
 
         Environment variables:
-            {prefix}_JWT_SECRET: JWT secret key
+            GOFR_JWT_SECRET: JWT secret key (system-wide, shared across services)
             {prefix}_TOKEN_STORE: Token store path
         """
         env_data = env or os.environ
 
-        jwt_secret = env_data.get(f"{prefix}_JWT_SECRET")
+        jwt_secret = env_data.get("GOFR_JWT_SECRET")
         token_store = env_data.get(f"{prefix}_TOKEN_STORE")
 
         return cls(
@@ -256,9 +256,7 @@ class Settings:
     auth: AuthSettings = field(
         default_factory=lambda: AuthSettings(jwt_secret=None, require_auth=False)
     )
-    storage: StorageSettings = field(
-        default_factory=lambda: StorageSettings.from_env()
-    )
+    storage: StorageSettings = field(default_factory=lambda: StorageSettings.from_env())
     log: LogSettings = field(default_factory=LogSettings)
     prefix: str = "GOFR"
 
@@ -292,7 +290,7 @@ class Settings:
             {prefix}_MCP_PORT: MCP server port
             {prefix}_WEB_PORT: Web server port
             {prefix}_MCPO_PORT: MCPO proxy port
-            {prefix}_JWT_SECRET: JWT secret key (required if auth enabled)
+            GOFR_JWT_SECRET: JWT secret key (system-wide, required if auth enabled)
             {prefix}_TOKEN_STORE: Token store path
             {prefix}_DATA_DIR: Data directory
             {prefix}_LOG_LEVEL: Logging level (default: INFO)
@@ -304,7 +302,7 @@ class Settings:
         if default_mcp_port == 8001 and default_web_port == 8000 and default_mcpo_port == 8002:
             try:
                 # Convert prefix (e.g., GOFR_DOC) to service name (e.g., gofr-doc)
-                service_name = prefix.lower().replace('_', '-')
+                service_name = prefix.lower().replace("_", "-")
                 ports = get_ports(service_name, env=env_data)
                 default_mcp_port = ports.mcp
                 default_mcpo_port = ports.mcpo

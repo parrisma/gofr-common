@@ -104,8 +104,8 @@ class TokenService:
             logger_name = self._env_prefix.lower().replace("_", "-") + "-tokens"
             self._logger = create_logger(name=logger_name)
 
-        # Get or create secret key
-        env_var = f"{self._env_prefix}_JWT_SECRET"
+        # Get or create secret key — JWT secret is system-wide
+        env_var = "GOFR_JWT_SECRET"
         secret = secret_key or os.environ.get(env_var)
         if not secret:
             self._logger.warning(

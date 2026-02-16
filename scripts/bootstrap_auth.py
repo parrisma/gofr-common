@@ -30,7 +30,7 @@ Environment Variables (with prefix, e.g., GOFR_ or GOFR_):
     {PREFIX}VAULT_SECRET_ID    Vault AppRole secret ID (alternative to token)
     {PREFIX}VAULT_PATH_PREFIX  Path prefix in Vault (default: {prefix}/auth)
     {PREFIX}VAULT_MOUNT_POINT  KV mount point (default: secret)
-    {PREFIX}JWT_SECRET         JWT signing secret (auto-generated if not set)
+    {PREFIX}JWT_SECRET         JWT signing secret (auto-generated if not set; system-wide: GOFR_JWT_SECRET)
     {PREFIX}DATA_DIR           Data directory for file backend
 
 Output (to stdout, for shell capture):
@@ -105,11 +105,11 @@ def _env_flag(prefix: str, suffix: str, default: bool = True) -> bool:
 
 def install_vault_policies(prefix: str, quiet: bool = False) -> bool:
     """Install Vault policies if using Vault backend.
-    
+
     Args:
         prefix: Environment variable prefix
         quiet: Suppress output messages
-        
+
     Returns:
         True if policies were installed or not needed, False on error
     """
@@ -118,31 +118,31 @@ def install_vault_policies(prefix: str, quiet: bool = False) -> bool:
     if not _env_flag(prefix, "BOOTSTRAP_INSTALL_POLICIES", default=True):
         log_info("Skipping Vault policy installation (disabled by environment)", quiet)
         return True
-    
+
     # Only install policies for Vault backend
     if backend != "vault":
         return True
-        
+
     log_info("Installing Vault policies...", quiet)
-    
+
     try:
         # Create Vault client
         vault_url = os.environ.get(f"{prefix}_VAULT_URL")
         vault_token = os.environ.get(f"{prefix}_VAULT_TOKEN")
-        
+
         if not vault_url or not vault_token:
             log_warn("Vault URL or token not set, skipping policy installation", quiet)
             return True
-            
+
         config = VaultConfig(url=vault_url, token=vault_token)
         client = VaultClient(config)
         admin = VaultAdmin(client)
-        
+
         # Install all policies
         admin.update_policies()
         log_success("Vault policies installed", quiet)
         return True
-        
+
     except Exception as e:
         log_error(f"Failed to install Vault policies: {e}")
         return False
@@ -150,12 +150,12 @@ def install_vault_policies(prefix: str, quiet: bool = False) -> bool:
 
 def store_jwt_secret_in_vault(prefix: str, jwt_secret: str, quiet: bool = False) -> bool:
     """Store JWT signing secret in Vault for services to read.
-    
+
     Args:
         prefix: Environment variable prefix
         jwt_secret: The JWT secret to store
         quiet: Suppress output messages
-        
+
     Returns:
         True if stored successfully, False on error
     """
@@ -164,29 +164,29 @@ def store_jwt_secret_in_vault(prefix: str, jwt_secret: str, quiet: bool = False)
     if not _env_flag(prefix, "BOOTSTRAP_STORE_JWT_SECRET", default=True):
         log_info("Skipping JWT secret storage (disabled by environment)", quiet)
         return True
-    
+
     # Only store in Vault backend
     if backend != "vault":
         return True
-        
+
     log_info("Storing JWT signing secret in Vault...", quiet)
-    
+
     try:
         vault_url = os.environ.get(f"{prefix}_VAULT_URL")
         vault_token = os.environ.get(f"{prefix}_VAULT_TOKEN")
-        
+
         if not vault_url or not vault_token:
             log_warn("Vault URL or token not set, skipping JWT secret storage", quiet)
             return True
-            
+
         config = VaultConfig(url=vault_url, token=vault_token)
         client = VaultClient(config)
-        
+
         # Store at gofr/config/jwt-signing-secret (consistent with original bootstrap.py)
         client.write_secret("gofr/config/jwt-signing-secret", {"value": jwt_secret})
         log_success("JWT signing secret stored in Vault", quiet)
         return True
-        
+
     except Exception as e:
         log_error(f"Failed to store JWT secret in Vault: {e}")
         return False
@@ -219,7 +219,8 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-        "--quiet", "-q",
+        "--quiet",
+        "-q",
         action="store_true",
         help="Suppress informational output (only output tokens)",
     )
@@ -287,8 +288,8 @@ def setup_env_defaults(prefix: str, args: argparse.Namespace) -> str:
     if args.vault_token:
         os.environ[f"{prefix}_VAULT_TOKEN"] = args.vault_token
 
-    # Handle JWT secret - generate if not provided
-    jwt_key = f"{prefix}_JWT_SECRET"
+    # Handle JWT secret - generate if not provided (system-wide, not per-app)
+    jwt_key = "GOFR_JWT_SECRET"
     if args.jwt_secret:
         os.environ[jwt_key] = args.jwt_secret
     elif not os.environ.get(jwt_key):
@@ -312,9 +313,9 @@ def get_auth_service(prefix: str) -> Tuple[AuthService, str]:
     Raises:
         SystemExit: If configuration is invalid
     """
-    jwt_secret = os.environ.get(f"{prefix}_JWT_SECRET")
+    jwt_secret = os.environ.get("GOFR_JWT_SECRET")
     if not jwt_secret:
-        log_error(f"{prefix}_JWT_SECRET is required")
+        log_error("GOFR_JWT_SECRET is required")
         sys.exit(1)
 
     try:
@@ -369,9 +370,7 @@ def ensure_groups(auth_service: AuthService, quiet: bool = False) -> bool:
 
 
 def has_existing_bootstrap_token(
-    auth_service: AuthService,
-    group_name: str,
-    quiet: bool = False
+    auth_service: AuthService, group_name: str, quiet: bool = False
 ) -> bool:
     """Check if bootstrap token already exists for a group.
 
@@ -386,13 +385,14 @@ def has_existing_bootstrap_token(
     try:
         # List all active tokens
         active_tokens = auth_service.list_tokens(status="active")
-        
+
         # Find tokens that have only this group (bootstrap tokens are single-group)
         # and have a long expiry (>1 year, indicating they're bootstrap tokens)
         from datetime import datetime, timedelta
+
         now = datetime.utcnow()  # Use utcnow() to match TokenRecord timestamps
         one_year = timedelta(days=365)
-        
+
         for token_record in active_tokens:
             if token_record.groups == [group_name]:
                 if token_record.expires_at:
@@ -404,10 +404,10 @@ def has_existing_bootstrap_token(
                             f"Bootstrap token for '{group_name}' already exists "
                             f"(expires: {remaining_days} days remaining). "
                             f"Use --force-tokens to create new token.",
-                            quiet
+                            quiet,
                         )
                         return True
-        
+
         return False
     except Exception as e:
         log_warn(f"Could not check for existing token for '{group_name}': {e}", quiet)
@@ -415,10 +415,7 @@ def has_existing_bootstrap_token(
 
 
 def create_bootstrap_token(
-    auth_service: AuthService,
-    group_name: str,
-    quiet: bool = False,
-    force: bool = False
+    auth_service: AuthService, group_name: str, quiet: bool = False, force: bool = False
 ) -> Optional[str]:
     """Create a bootstrap token for a group.
 
@@ -435,7 +432,7 @@ def create_bootstrap_token(
     if not force:
         if has_existing_bootstrap_token(auth_service, group_name, quiet):
             return None
-    
+
     try:
         token = auth_service.create_token(
             groups=[group_name],
@@ -506,14 +503,9 @@ def main() -> int:
 
         tokens = {}
         tokens_skipped = []
-        
+
         for group_name in ["public", "admin"]:
-            token = create_bootstrap_token(
-                auth_service, 
-                group_name, 
-                quiet,
-                force=args.force_tokens
-            )
+            token = create_bootstrap_token(auth_service, group_name, quiet, force=args.force_tokens)
             if token:
                 tokens[group_name] = token
             else:
@@ -541,6 +533,7 @@ def main() -> int:
             if tokens_file.exists():
                 try:
                     import json
+
                     existing = json.loads(tokens_file.read_text())
                     for key in ["admin_token", "public_token"]:
                         if not tokens_data.get(key) and existing.get(key):
@@ -548,14 +541,15 @@ def main() -> int:
                 except Exception:
                     pass
             import json
+
             tokens_file.write_text(json.dumps(tokens_data, indent=2))
             tokens_file.chmod(0o600)
             log_success(f"Tokens saved to {tokens_file}", quiet)
 
             log_info("", quiet)
             log_info("To use these tokens:", quiet)
-            log_info(f"  eval \"$(python {Path(__file__).name} --prefix {prefix})\"", quiet)
-        
+            log_info(f'  eval "$(python {Path(__file__).name} --prefix {prefix})"', quiet)
+
         if tokens_skipped:
             log_info("", quiet)
             log_info(f"Skipped groups (already have tokens): {', '.join(tokens_skipped)}", quiet)

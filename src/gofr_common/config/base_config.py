@@ -112,11 +112,17 @@ class InfrastructureConfig(BaseConfig):
         project_root: Optional[Path] = None,
         env_file: Optional[Path] = None,
     ) -> "InfrastructureConfig":
-        base_config = BaseConfig.from_env(prefix=prefix, project_root=project_root, env_file=env_file)
+        base_config = BaseConfig.from_env(
+            prefix=prefix, project_root=project_root, env_file=env_file
+        )
         env_data = EnvLoader(env_file).load()
 
-        chroma_host = env_data.get(f"{prefix}_CHROMA_HOST") or env_data.get(f"{prefix}_CHROMADB_HOST")
-        chroma_port = _parse_optional_int(env_data.get(f"{prefix}_CHROMA_PORT"), f"{prefix}_CHROMA_PORT")
+        chroma_host = env_data.get(f"{prefix}_CHROMA_HOST") or env_data.get(
+            f"{prefix}_CHROMADB_HOST"
+        )
+        chroma_port = _parse_optional_int(
+            env_data.get(f"{prefix}_CHROMA_PORT"), f"{prefix}_CHROMA_PORT"
+        )
         if chroma_port is None:
             chroma_port = _parse_optional_int(
                 env_data.get(f"{prefix}_CHROMADB_PORT"), f"{prefix}_CHROMADB_PORT"
@@ -145,7 +151,7 @@ class InfrastructureConfig(BaseConfig):
             neo4j_http_port=_parse_optional_int(
                 env_data.get(f"{prefix}_NEO4J_HTTP_PORT"), f"{prefix}_NEO4J_HTTP_PORT"
             ),
-            shared_jwt_secret=env_data.get(f"{prefix}_JWT_SECRET"),
+            shared_jwt_secret=env_data.get("GOFR_JWT_SECRET"),
         )
 
     def __post_init__(self) -> None:

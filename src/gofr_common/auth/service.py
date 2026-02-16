@@ -46,7 +46,6 @@ __all__ = [
 ]
 
 
-
 class AuthService:
     """Service for JWT authentication and multi-group management.
 
@@ -90,7 +89,7 @@ class AuthService:
         auth = AuthService(
             token_store=token_store,
             group_registry=group_registry,
-            env_prefix="GOFR_DIG",  # Uses GOFR_DIG_JWT_SECRET
+            env_prefix="GOFR_DIG",  # JWT secret always from GOFR_JWT_SECRET
         )
     """
 
@@ -108,7 +107,7 @@ class AuthService:
         Args:
             token_store: TokenStore instance for token storage (vault)
             group_registry: GroupRegistry instance for group management
-            secret_key: Secret key for JWT signing. Falls back to {env_prefix}_JWT_SECRET
+            secret_key: Secret key for JWT signing. Falls back to GOFR_JWT_SECRET env var
             env_prefix: Prefix for environment variables (e.g., "GOFR_DIG")
             logger: Optional logger instance. Creates one if not provided.
             audience: Optional JWT audience claim for token validation.
