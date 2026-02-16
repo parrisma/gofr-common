@@ -66,7 +66,8 @@ path "secret/metadata/gofr/config/logging/*" {
 # - Read own secrets (OpenRouter keys, etc)
 # - Read global config
 # - Read GOFR shared config (JWT signing)
-POLICY_MCP_READ = """
+POLICY_MCP_READ = (
+    """
 # Read MCP-specific secrets
 path "secret/data/services/mcp/*" {
   capabilities = ["read"]
@@ -75,13 +76,18 @@ path "secret/data/services/mcp/*" {
 path "secret/data/tokens/mcp" {
   capabilities = ["read"]
 }
-""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ + POLICY_GOFR_AUTH_RUNTIME_READ
+"""
+    + POLICY_GLOBAL_READ
+    + POLICY_GOFR_CONFIG_READ
+    + POLICY_GOFR_AUTH_RUNTIME_READ
+)
 
 # Web Service Policy
 # - Read own secrets (Session keys, etc)
 # - Read global config
 # - Read GOFR shared config (JWT signing)
-POLICY_WEB_READ = """
+POLICY_WEB_READ = (
+    """
 # Read Web-specific secrets
 path "secret/data/services/web/*" {
   capabilities = ["read"]
@@ -90,13 +96,18 @@ path "secret/data/services/web/*" {
 path "secret/data/tokens/web" {
   capabilities = ["read"]
 }
-""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ + POLICY_GOFR_AUTH_RUNTIME_READ
+"""
+    + POLICY_GLOBAL_READ
+    + POLICY_GOFR_CONFIG_READ
+    + POLICY_GOFR_AUTH_RUNTIME_READ
+)
 
 # DIG Service Policy
 # - Read own secrets (API keys, etc)
 # - Read global config
 # - Read GOFR shared config (JWT signing)
-POLICY_DIG_READ = """
+POLICY_DIG_READ = (
+    """
 # Read DIG-specific secrets
 path "secret/data/services/dig/*" {
   capabilities = ["read"]
@@ -105,7 +116,39 @@ path "secret/data/services/dig/*" {
 path "secret/data/tokens/dig" {
   capabilities = ["read"]
 }
-""" + POLICY_GLOBAL_READ + POLICY_GOFR_CONFIG_READ + POLICY_GOFR_AUTH_RUNTIME_READ
+"""
+    + POLICY_GLOBAL_READ
+    + POLICY_GOFR_CONFIG_READ
+    + POLICY_GOFR_AUTH_RUNTIME_READ
+)
+
+# DOC Service Policy
+# - Read own secrets (API keys, etc)
+# - Read global config
+# - Read GOFR shared config (JWT signing)
+# - Read/write GOFR auth data (groups, tokens) for doc-level auth
+POLICY_DOC_READ = (
+    """
+# Read DOC-specific secrets
+path "secret/data/services/doc/*" {
+  capabilities = ["read"]
+}
+# Read specific token for this service if needed
+path "secret/data/tokens/doc" {
+  capabilities = ["read"]
+}
+# Read/write doc auth data (groups, tokens, session metadata)
+path "secret/data/gofr/doc/auth/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+path "secret/metadata/gofr/doc/auth/*" {
+  capabilities = ["list", "read", "delete"]
+}
+"""
+    + POLICY_GLOBAL_READ
+    + POLICY_GOFR_CONFIG_READ
+    + POLICY_GOFR_AUTH_RUNTIME_READ
+)
 
 # Admin Control Policy
 # - Read GOFR shared config
@@ -118,5 +161,6 @@ POLICIES = {
     "gofr-web-policy": POLICY_WEB_READ,
     "gofr-dig-policy": POLICY_DIG_READ,
     "gofr-dig-logging-policy": POLICY_GOFR_DIG_LOGGING_READ,
+    "gofr-doc-policy": POLICY_DOC_READ,
     "gofr-admin-control-policy": POLICY_ADMIN_CONTROL,
 }
