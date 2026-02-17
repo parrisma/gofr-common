@@ -13,6 +13,7 @@ from gofr_common.auth import (
     FingerprintMismatchError,
     GroupRegistry,
     InvalidGroupError,
+    JwtSecretProvider,
     TokenExpiredError,
     TokenInfo,
     TokenNotFoundError,
@@ -41,6 +42,14 @@ def _create_vault_stores() -> tuple[VaultTokenStore, VaultGroupStore]:
     )
 
 
+def _make_test_secret_provider(secret: str = "test-secret") -> JwtSecretProvider:
+    from unittest.mock import MagicMock
+
+    mock_vault = MagicMock(spec=VaultClient)
+    mock_vault.read_secret.return_value = {"value": secret}
+    return JwtSecretProvider(vault_client=mock_vault)
+
+
 def create_memory_auth(secret_key: str = "test-secret", **kwargs) -> AuthService:
     """Create an AuthService with Vault-backed stores for testing."""
     vault_client = _build_vault_client()
@@ -51,7 +60,7 @@ def create_memory_auth(secret_key: str = "test-secret", **kwargs) -> AuthService
     return AuthService(
         token_store=token_store,
         group_registry=group_registry,
-        secret_key=secret_key,
+        secret_provider=_make_test_secret_provider(secret_key),
         **kwargs,
     )
 
@@ -103,38 +112,23 @@ class TestAuthServiceInit:
         assert auth.secret_key == "test-secret-key"
 
     def test_init_with_env_var(self, tmp_path: Path):
-        """Test initialization with environment variable."""
+        """GOFR_JWT_SECRET env var is not used when JwtSecretProvider is provided."""
+        _ = tmp_path
         with patch.dict(os.environ, {"GOFR_JWT_SECRET": "env-secret"}):
-            token_store, group_store = _create_vault_stores()
-            group_registry = GroupRegistry(store=group_store)
-            auth = AuthService(
-                token_store=token_store,
-                group_registry=group_registry,
-                env_prefix="GOFR_TEST",
-            )
-
-            assert auth.secret_key == "env-secret"
+            auth = create_memory_auth(secret_key="test-secret")
+            assert auth.secret_key == "test-secret"
 
     def test_init_auto_generates_secret(self, tmp_path: Path):
-        """Test that secret is auto-generated when not provided."""
-        # Clear any existing env var but preserve Vault access
-        vault_url = os.environ.get("GOFR_VAULT_URL")
-        vault_token = os.environ.get("GOFR_VAULT_TOKEN")
-        with patch.dict(
-            os.environ,
-            {"GOFR_VAULT_URL": vault_url or "", "GOFR_VAULT_TOKEN": vault_token or ""},
-            clear=True,
-        ):
-            token_store, group_store = _create_vault_stores()
-            group_registry = GroupRegistry(store=group_store)
-            auth = AuthService(
+        """AuthService requires a secret_provider; it no longer auto-generates secrets."""
+        _ = tmp_path
+        token_store, group_store = _create_vault_stores()
+        group_registry = GroupRegistry(store=group_store)
+        with pytest.raises(TypeError):
+            AuthService(
                 token_store=token_store,
                 group_registry=group_registry,
                 env_prefix="GOFR_NONE",
             )
-
-            assert auth.secret_key is not None
-            assert len(auth.secret_key) == 64  # hex of 32 bytes
 
     def test_init_memory_mode(self):
         """Test initialization with in-memory token store."""
@@ -1053,7 +1047,9 @@ class TestAuthProvider:
                 "GOFR_VAULT_TOKEN": os.environ.get("GOFR_VAULT_TOKEN", ""),
             },
         ):
-            provider = create_auth_provider(secret_key="test-secret")
+            provider = create_auth_provider(
+                secret_provider=_make_test_secret_provider("test-secret")
+            )
 
             assert provider.service is not None
             assert provider.service.secret_key == "test-secret"
@@ -1072,7 +1068,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         assert service.secret_key == "test-secret"
         assert service.store is store
@@ -1082,7 +1080,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         token = service.create(groups=["admin", "users"])
         assert token is not None
@@ -1093,7 +1093,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         token = service.create(groups=["admin"])
         info = service.verify(token)
@@ -1105,7 +1107,9 @@ class TestTokenService:
         from gofr_common.auth import TokenRevokedError, TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         token = service.create(groups=["admin"])
         assert service.revoke(token) is True
@@ -1118,7 +1122,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         service.create(groups=["admin"])
         service.create(groups=["users"])
@@ -1131,7 +1137,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         token1 = service.create(groups=["admin"])
         service.create(groups=["users"])
@@ -1148,7 +1156,9 @@ class TestTokenService:
         from gofr_common.auth import FingerprintMismatchError, TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         token = service.create(groups=["admin"], fingerprint="device123")
 
@@ -1165,7 +1175,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         token = service.create(
             groups=["admin"],
@@ -1181,7 +1193,9 @@ class TestTokenService:
         from gofr_common.auth import TokenService, TokenValidationError
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         # Invalid token
         with pytest.raises(TokenValidationError):
@@ -1194,7 +1208,9 @@ class TestTokenService:
         from gofr_common.auth import TokenNotFoundError, TokenService
 
         store, _group_store = _create_vault_stores()
-        service = TokenService(store=store, secret_key="test-secret")
+        service = TokenService(
+            store=store, secret_provider=_make_test_secret_provider("test-secret")
+        )
 
         # Create a valid JWT but don't store it
         fake_token = jwt.encode(

@@ -9,11 +9,9 @@ which provides group validation and a higher-level API.
 
 from __future__ import annotations
 
-import hashlib
-import os
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 import jwt
 
@@ -29,6 +27,9 @@ from .exceptions import (
     TokenValidationError,
 )
 from .tokens import TokenInfo, TokenRecord
+
+if TYPE_CHECKING:
+    from .jwt_secret_provider import JwtSecretProvider
 
 # Re-export exceptions for backward compatibility
 __all__ = [
@@ -58,11 +59,13 @@ class TokenService:
 
     Example:
         from gofr_common.auth.backends import VaultConfig, VaultClient, VaultTokenStore
+        from gofr_common.auth import JwtSecretProvider
 
         vault_config = VaultConfig.from_env("GOFR_DIG")
         vault_client = VaultClient(vault_config)
         store = VaultTokenStore(vault_client)
-        tokens = TokenService(store=store, secret_key="my-secret")
+        provider = JwtSecretProvider(vault_client)
+        tokens = TokenService(store=store, secret_provider=provider)
 
         # Create a token
         jwt_token = tokens.create(groups=["admin"])
@@ -78,7 +81,7 @@ class TokenService:
     def __init__(
         self,
         store: TokenStore,
-        secret_key: Optional[str] = None,
+        secret_provider: "JwtSecretProvider",
         env_prefix: str = "GOFR",
         logger: Optional[Logger] = None,
         audience: Optional[str] = None,
@@ -87,7 +90,7 @@ class TokenService:
 
         Args:
             store: TokenStore instance for token persistence
-            secret_key: Secret key for JWT signing. Falls back to {env_prefix}_JWT_SECRET
+            secret_provider: JwtSecretProvider that supplies the JWT signing secret
             env_prefix: Prefix for environment variables (e.g., "GOFR_DIG")
             logger: Optional logger instance
             audience: Optional JWT audience claim
@@ -96,6 +99,7 @@ class TokenService:
         self._audience = audience or f"{self._env_prefix.lower()}-api"
         self._store = store
         self._token_name_pattern = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,62}[a-z0-9])$")
+        self._secret_provider = secret_provider
 
         # Setup logger
         if logger is not None:
@@ -103,17 +107,6 @@ class TokenService:
         else:
             logger_name = self._env_prefix.lower().replace("_", "-") + "-tokens"
             self._logger = create_logger(name=logger_name)
-
-        # Get or create secret key — JWT secret is system-wide
-        env_var = "GOFR_JWT_SECRET"
-        secret = secret_key or os.environ.get(env_var)
-        if not secret:
-            self._logger.warning(
-                "No JWT secret provided, generating random secret",
-                hint=f"Set {env_var} for persistent tokens",
-            )
-            secret = os.urandom(32).hex()
-        self._secret_key = secret
 
         self._logger.debug(
             "TokenService initialized",
@@ -123,14 +116,13 @@ class TokenService:
 
     @property
     def secret_key(self) -> str:
-        """Get the JWT signing secret."""
-        return self._secret_key
+        """Get the current JWT signing secret from the provider."""
+        return self._secret_provider.get()
 
     @property
     def secret_fingerprint(self) -> str:
         """Get a fingerprint of the secret for logging (doesn't expose secret)."""
-        digest = hashlib.sha256(self._secret_key.encode()).hexdigest()
-        return f"sha256:{digest[:12]}"
+        return self._secret_provider.fingerprint
 
     @property
     def audience(self) -> str:
@@ -200,7 +192,7 @@ class TokenService:
         if extra_claims:
             payload.update(extra_claims)
 
-        jwt_token = jwt.encode(payload, self._secret_key, algorithm="HS256")
+        jwt_token = jwt.encode(payload, self.secret_key, algorithm="HS256")
 
         # Store token record
         self._store.put(str(token_record.id), token_record)
@@ -242,7 +234,7 @@ class TokenService:
             # Decode JWT
             payload = jwt.decode(
                 token,
-                self._secret_key,
+                self.secret_key,
                 algorithms=["HS256"],
                 options={
                     "verify_exp": True,
@@ -317,7 +309,7 @@ class TokenService:
         try:
             payload = jwt.decode(
                 token,
-                self._secret_key,
+                self.secret_key,
                 algorithms=["HS256"],
                 options={
                     "verify_exp": False,
@@ -406,7 +398,7 @@ class TokenService:
         try:
             return jwt.decode(
                 token,
-                self._secret_key,
+                self.secret_key,
                 algorithms=["HS256"],
                 options={
                     "verify_exp": False,

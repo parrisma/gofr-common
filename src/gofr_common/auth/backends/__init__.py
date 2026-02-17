@@ -28,6 +28,7 @@ from .factory import (
     create_group_store,
     create_stores_from_env,
     create_token_store,
+    create_vault_client_from_env,
 )
 from .vault import VaultGroupStore, VaultTokenStore
 from .vault_client import (
@@ -66,5 +67,6 @@ __all__ = [
     "create_token_store",
     "create_group_store",
     "create_stores_from_env",
+    "create_vault_client_from_env",
     "BackendType",
 ]

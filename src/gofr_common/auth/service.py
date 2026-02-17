@@ -10,10 +10,11 @@ operations with group validation. For pure JWT operations without
 group validation, see TokenService.
 """
 
-import hashlib
+from __future__ import annotations
+
 import re
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Literal, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional
 
 import jwt
 
@@ -32,6 +33,9 @@ from .exceptions import (
 from .groups import Group, GroupRegistry
 from .token_service import TokenService
 from .tokens import TokenInfo, TokenRecord
+
+if TYPE_CHECKING:
+    from .jwt_secret_provider import JwtSecretProvider
 
 # Re-export for backward compatibility
 __all__ = [
@@ -77,7 +81,7 @@ class AuthService:
 
         # Create service
         auth = AuthService(
-            secret_key="my-secret",
+            secret_provider=provider,
             token_store=token_store,
             group_registry=group_registry,
         )
@@ -89,7 +93,8 @@ class AuthService:
         auth = AuthService(
             token_store=token_store,
             group_registry=group_registry,
-            env_prefix="GOFR_DIG",  # JWT secret always from GOFR_JWT_SECRET
+            secret_provider=provider,
+            env_prefix="GOFR_DIG",
         )
     """
 
@@ -97,7 +102,7 @@ class AuthService:
         self,
         token_store: TokenStore,
         group_registry: GroupRegistry,
-        secret_key: Optional[str] = None,
+        secret_provider: "JwtSecretProvider",
         env_prefix: str = "GOFR",
         logger: Optional[Logger] = None,
         audience: Optional[str] = None,
@@ -107,7 +112,7 @@ class AuthService:
         Args:
             token_store: TokenStore instance for token storage (vault)
             group_registry: GroupRegistry instance for group management
-            secret_key: Secret key for JWT signing. Falls back to GOFR_JWT_SECRET env var
+            secret_provider: JwtSecretProvider that supplies the JWT signing secret
             env_prefix: Prefix for environment variables (e.g., "GOFR_DIG")
             logger: Optional logger instance. Creates one if not provided.
             audience: Optional JWT audience claim for token validation.
@@ -125,13 +130,13 @@ class AuthService:
         # Create internal TokenService for JWT operations
         self._token_service = TokenService(
             store=token_store,
-            secret_key=secret_key,
+            secret_provider=secret_provider,
             env_prefix=env_prefix,
             audience=audience,
         )
 
         # Expose key properties from token service
-        self.secret_key = self._token_service.secret_key
+        self._secret_provider = secret_provider
         self.audience = self._token_service.audience
 
         # Store references
@@ -160,6 +165,11 @@ class AuthService:
         return self._token_service
 
     @property
+    def secret_key(self) -> str:
+        """Get the current JWT signing secret from the provider."""
+        return self._secret_provider.get()
+
+    @property
     def groups(self) -> GroupRegistry:
         """Access the group registry.
 
@@ -170,8 +180,7 @@ class AuthService:
 
     def _secret_fingerprint(self) -> str:
         """Return a stable fingerprint for the current secret without exposing it."""
-        digest = hashlib.sha256(self.secret_key.encode()).hexdigest()
-        return f"sha256:{digest[:12]}"
+        return self._secret_provider.fingerprint
 
     def get_secret_fingerprint(self) -> str:
         """Public accessor for the JWT secret fingerprint."""

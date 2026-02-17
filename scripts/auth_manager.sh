@@ -10,17 +10,13 @@
 #   ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
 #   ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list
 #
-# LEGACY USAGE:
-#   # From gofr-iq workspace (GOFR_JWT_SECRET required in env):
-#   cd /path/to/gofr-iq
-#   export GOFR_JWT_SECRET=$(vault kv get -field=value secret/gofr/config/jwt-signing-secret)
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker <command> [args...]
-#
 # SSOT PATTERN:
 #   This script automatically sources:
 #   1. lib/gofr-common/config/gofr_ports.env  (ports)
 #   2. secrets/vault_root_token               (VAULT_TOKEN via Zero-Trust Bootstrap)
-#   3. Vault secret path                       (JWT secret source of truth)
+#
+#   JWT signing secret is read from Vault at runtime by JwtSecretProvider
+#   in auth_manager.py -- no env var needed.
 #
 #   For the simplest flow, use auth_env.sh first:
 #   source <(./lib/gofr-common/scripts/auth_env.sh --docker)
@@ -80,7 +76,6 @@ ENVIRONMENT:
   This auto-loads:
     - VAULT_ADDR (with --docker, uses gofr-vault hostname)
     - VAULT_TOKEN (short-lived operator token, not root)
-    - GOFR_JWT_SECRET (loaded from Vault)
 
 For full command reference, run:
   python lib/gofr-common/scripts/auth_manager.py --help
@@ -103,7 +98,6 @@ WORKSPACE_ROOT="$(cd "${COMMON_DIR}/../.." && pwd)"
 PORTS_ENV="${COMMON_DIR}/config/gofr_ports.env"
 SECRETS_DIR="${WORKSPACE_ROOT}/secrets"
 FALLBACK_SECRETS_DIR="${WORKSPACE_ROOT}/lib/gofr-common/secrets"
-JWT_SECRET_PATH="secret/gofr/config/jwt-signing-secret"
 ADMIN_ROLE_NAME="gofr-admin-control"
 
 if [[ ! -f "${PORTS_ENV}" ]]; then
@@ -207,37 +201,6 @@ if [[ -z "${GOFR_VAULT_TOKEN}" ]]; then
 fi
 export GOFR_VAULT_TOKEN
 
-vault_kv_get() {
-  local path="$1"
-  local field="$2"
-
-  if command -v vault >/dev/null 2>&1; then
-    VAULT_ADDR="${GOFR_VAULT_URL}" VAULT_TOKEN="${GOFR_VAULT_TOKEN}" vault kv get -field="${field}" "${path}"
-    return $?
-  fi
-
-  local vault_container="gofr-vault"
-  if ! docker ps --format '{{.Names}}' | grep -q "^${vault_container}$"; then
-    echo "❌ ERROR: Cannot read JWT secret from Vault" >&2
-    echo "   Cause: vault CLI not installed and ${vault_container} container not running" >&2
-    echo "   Context: GOFR_VAULT_URL=${GOFR_VAULT_URL}, path=${path}" >&2
-    echo "   Recovery: install vault CLI or start Vault: ./lib/gofr-common/scripts/manage_vault.sh start" >&2
-    return 1
-  fi
-
-  docker exec -e VAULT_ADDR="http://127.0.0.1:${GOFR_VAULT_PORT}" -e VAULT_TOKEN="${GOFR_VAULT_TOKEN}" "${vault_container}" vault kv get -field="${field}" "${path}"
-}
-
-JWT_SECRET="$(vault_kv_get "${JWT_SECRET_PATH}" "value" 2>/dev/null || true)"
-if [[ -z "${JWT_SECRET}" ]]; then
-  echo "❌ ERROR: Failed to resolve JWT secret from Vault" >&2
-  echo "   Cause: secret missing or Vault unreachable/unauthorized" >&2
-  echo "   Context: GOFR_VAULT_URL=${GOFR_VAULT_URL}, path=${JWT_SECRET_PATH}" >&2
-  echo "   Recovery: bootstrap Vault JWT secret: ./lib/gofr-common/scripts/manage_vault.sh bootstrap" >&2
-  exit 1
-fi
-export GOFR_JWT_SECRET="${JWT_SECRET}"
-
 # Display configuration
 echo "=== Auth Manager Configuration ===" >&2
 echo "Environment: prod" >&2
@@ -245,7 +208,6 @@ echo "Backend: vault" >&2
 echo "Vault URL: ${GOFR_VAULT_URL}" >&2
 echo "Vault Token: ${GOFR_VAULT_TOKEN:0:8}..." >&2
 echo "Vault Role: ${ADMIN_ROLE_NAME}" >&2
-echo "JWT Source: ${JWT_SECRET_PATH}" >&2
 echo "=====================================" >&2
 echo "" >&2
 

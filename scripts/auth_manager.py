@@ -13,7 +13,6 @@ QUICK START:
     cd /path/to/gofr-project
     set -a && source lib/gofr-common/config/gofr_ports.env && set +a
     export VAULT_TOKEN=$(cat secrets/vault_root_token)
-    export GOFR_JWT_SECRET=$(vault kv get -field=value secret/gofr/config/jwt-signing-secret)
 
     # List groups:
     python auth_manager.py --backend vault groups list
@@ -40,7 +39,6 @@ USAGE:
             auth_manager.py tokens inspect <token-string> [--name NAME]
 
 ENVIRONMENT VARIABLES (REQUIRED):
-    GOFR_JWT_SECRET        JWT signing secret (shared across all services)
     GOFR_AUTH_BACKEND      Must be "vault"
 
     For Vault backend:
@@ -93,6 +91,7 @@ try:
     from gofr_common.auth import (
         AuthService,
         GroupRegistry,
+        JwtSecretProvider,
         VaultClient,
         VaultConfig,
         VaultGroupStore,
@@ -107,6 +106,7 @@ except ImportError:
     from gofr_common.auth import (
         AuthService,
         GroupRegistry,
+        JwtSecretProvider,
         VaultClient,
         VaultConfig,
         VaultGroupStore,
@@ -160,6 +160,7 @@ def create_auth_service(backend: str = "vault", quiet: bool = True) -> AuthServi
     # Suppress logging if quiet mode - must be done BEFORE any imports/inits
     if quiet:
         import logging
+
         logging.disable(logging.CRITICAL)
 
     if backend != "vault":
@@ -175,10 +176,16 @@ def create_auth_service(backend: str = "vault", quiet: bool = True) -> AuthServi
         vault_path_prefix = os.environ.get("GOFR_VAULT_PATH_PREFIX", "gofr/auth")
 
         if not vault_url:
-            print("ERROR: GOFR_VAULT_URL environment variable required for vault backend", file=sys.stderr)
+            print(
+                "ERROR: GOFR_VAULT_URL environment variable required for vault backend",
+                file=sys.stderr,
+            )
             sys.exit(1)
         if not vault_token:
-            print("ERROR: GOFR_VAULT_TOKEN environment variable required for vault backend", file=sys.stderr)
+            print(
+                "ERROR: GOFR_VAULT_TOKEN environment variable required for vault backend",
+                file=sys.stderr,
+            )
             sys.exit(1)
 
         config = VaultConfig(url=vault_url, token=vault_token)
@@ -193,35 +200,20 @@ def create_auth_service(backend: str = "vault", quiet: bool = True) -> AuthServi
 
     group_registry = GroupRegistry(store=group_store, auto_bootstrap=True)
 
-    # JWT secret MUST be defined - this is the single source of truth
-    # shared across all services. It cannot be generated locally as that
-    # would break token verification across services.
-    secret_key = os.environ.get("GOFR_JWT_SECRET")
-    if not secret_key:
-        print(
-            "\nERROR: GOFR_JWT_SECRET environment variable is required.\n"
-            "\n"
-            "JWT secret must be defined centrally and shared across all services.\n"
-            "Set it in lib/gofr-common/.env:\n"
-            "\n"
-            "  GOFR_JWT_SECRET=gofr-dev-jwt-secret-shared-across-all-services\n"
-            "\n"
-            "Then reload your environment:\n"
-            "  source lib/gofr-common/.env\n",
-            file=sys.stderr
-        )
-        sys.exit(1)
+    # JWT secret is read from Vault by JwtSecretProvider -- no env var needed
+    secret_provider = JwtSecretProvider(vault_client=client)
 
     return AuthService(
         token_store=token_store,
         group_registry=group_registry,
-        secret_key=secret_key,
+        secret_provider=secret_provider,
     )
 
 
 # ============================================================================
 # GROUP COMMANDS
 # ============================================================================
+
 
 def cmd_groups_list(auth: AuthService, include_defunct: bool = False, format: str = "table") -> int:
     """List all groups."""
@@ -255,7 +247,7 @@ def cmd_groups_create(auth: AuthService, name: str, description: Optional[str] =
     try:
         # Check if group already exists
         existing = auth.groups.get_group_by_name(name)
-        
+
         if existing:
             # Group exists - check if it's defunct
             if existing.defunct_at is not None:
@@ -276,7 +268,7 @@ def cmd_groups_create(auth: AuthService, name: str, description: Optional[str] =
                 # Group exists and is active
                 print(f"Group '{name}' already exists (active)")
                 return 0
-        
+
         # Group doesn't exist - create it
         group = auth.groups.create_group(name, description=description)
         print(f"Created group: {name}")
@@ -308,6 +300,7 @@ def cmd_groups_defunct(auth: AuthService, name: str) -> int:
 # ============================================================================
 # TOKEN COMMANDS
 # ============================================================================
+
 
 def cmd_tokens_list(
     auth: AuthService,
@@ -493,6 +486,7 @@ def cmd_tokens_inspect(auth: AuthService, token_string: Optional[str], name: Opt
 # MAIN
 # ============================================================================
 
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -536,7 +530,8 @@ For full documentation, see script header or run with --help.
         help="Storage backend (vault only). Set via GOFR_AUTH_BACKEND or this flag.",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Enable verbose logging output for debugging",
     )
@@ -551,7 +546,9 @@ For full documentation, see script header or run with --help.
         help="Manage authentication groups",
         description="Create, list, and manage authentication groups",
     )
-    groups_sub = groups_parser.add_subparsers(dest="subcommand", help="Group operation", required=False)
+    groups_sub = groups_parser.add_subparsers(
+        dest="subcommand", help="Group operation", required=False
+    )
 
     # groups list
     groups_list = groups_sub.add_parser(
@@ -579,7 +576,8 @@ For full documentation, see script header or run with --help.
     )
     groups_create.add_argument("name", help="Unique group name (e.g., 'finance', 'admin')")
     groups_create.add_argument(
-        "--description", "-d",
+        "--description",
+        "-d",
         help="Human-readable group description",
     )
 
@@ -599,7 +597,9 @@ For full documentation, see script header or run with --help.
         help="Manage JWT authentication tokens",
         description="Create, list, revoke, and inspect JWT tokens",
     )
-    tokens_sub = tokens_parser.add_subparsers(dest="subcommand", help="Token operation", required=False)
+    tokens_sub = tokens_parser.add_subparsers(
+        dest="subcommand", help="Token operation", required=False
+    )
 
     # tokens list
     tokens_list = tokens_sub.add_parser(
@@ -630,7 +630,8 @@ For full documentation, see script header or run with --help.
         description="Generate a new JWT token for specified groups",
     )
     tokens_create.add_argument(
-        "--groups", "-g",
+        "--groups",
+        "-g",
         required=True,
         help="Comma-separated list of groups (e.g., 'admin,users,reporting')",
     )
@@ -639,13 +640,15 @@ For full documentation, see script header or run with --help.
         help="Optional human-friendly token name (unique, lowercase, 3-64 chars)",
     )
     tokens_create.add_argument(
-        "--expires", "-e",
+        "--expires",
+        "-e",
         type=int,
         default=2592000,  # 30 days
         help="Token expiry in seconds. Default: %(default)s (30 days)",
     )
     tokens_create.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Save token to file (useful for scripts). If omitted, prints to stdout.",
     )
 

@@ -25,10 +25,10 @@ Usage:
 
     # Create auth service
     auth_service = AuthService(
-        secret_key="your-secret",
+        secret_provider=provider,
         token_store=token_store,
         group_registry=group_registry,
-        env_prefix="GOFR_DIG",  # For env var fallback
+        env_prefix="GOFR_DIG",
     )
 
     # Create a token
@@ -62,6 +62,7 @@ from .backends import (
     create_group_store,
     create_stores_from_env,
     create_token_store,
+    create_vault_client_from_env,
 )
 from .exceptions import (
     AuthenticationError,
@@ -102,6 +103,7 @@ try:
         verify_token_simple,
     )
 except ImportError:  # FastAPI is optional for CLI usage
+
     def _middleware_unavailable(*_args, **_kwargs):
         raise ImportError("fastapi is required for auth middleware")
 
@@ -128,6 +130,9 @@ except ImportError:  # FastAPI is optional for CLI usage
 
     def create_auth_provider(*_args, **_kwargs):
         raise ImportError("fastapi is required for auth provider")
+
+
+from .jwt_secret_provider import JwtSecretProvider
 from .service import AuthService
 from .token_service import TokenService
 from .tokens import TokenInfo, TokenRecord
@@ -137,6 +142,8 @@ __all__ = [
     "AuthService",
     # Token Service (low-level JWT operations)
     "TokenService",
+    # JWT Secret Provider
+    "JwtSecretProvider",
     # Provider (DI - recommended)
     "AuthProvider",
     "SecurityAuditorProtocol",
@@ -195,6 +202,7 @@ __all__ = [
     "create_token_store",
     "create_group_store",
     "create_stores_from_env",
+    "create_vault_client_from_env",
     # Storage exceptions
     "StorageError",
     "StorageUnavailableError",

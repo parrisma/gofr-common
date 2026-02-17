@@ -13,6 +13,7 @@ from gofr_common.auth import (
     AuthService,
     GroupRegistry,
     InvalidGroupError,
+    JwtSecretProvider,
 )
 from gofr_common.auth.backends import VaultClient, VaultConfig, VaultGroupStore, VaultTokenStore
 
@@ -31,10 +32,16 @@ def create_memory_auth(secret_key: str = "test-secret") -> AuthService:
     token_store = VaultTokenStore(vault_client, path_prefix=path_prefix)
     group_store = VaultGroupStore(vault_client, path_prefix=path_prefix)
     group_registry = GroupRegistry(store=group_store)
+
+    from unittest.mock import MagicMock
+
+    mock_vault = MagicMock(spec=VaultClient)
+    mock_vault.read_secret.return_value = {"value": secret_key}
+    secret_provider = JwtSecretProvider(vault_client=mock_vault)
     return AuthService(
         token_store=token_store,
         group_registry=group_registry,
-        secret_key=secret_key,
+        secret_provider=secret_provider,
     )
 
 

@@ -408,7 +408,7 @@ class AuthProvider:
 
 def create_auth_provider(
     auth_service: Optional["AuthService"] = None,
-    secret_key: Optional[str] = None,
+    secret_provider: Optional["JwtSecretProvider"] = None,
     auditor: Optional[SecurityAuditorProtocol] = None,
 ) -> AuthProvider:
     """Factory function to create an AuthProvider.
@@ -417,7 +417,7 @@ def create_auth_provider(
 
     Args:
         auth_service: Existing AuthService (preferred)
-        secret_key: JWT secret if creating new service
+        secret_provider: JwtSecretProvider if creating new service
         auditor: Optional security auditor
 
     Returns:
@@ -428,19 +428,25 @@ def create_auth_provider(
         auth = create_auth_provider(auth_service=my_service)
 
         # From environment
-        auth = create_auth_provider(secret_key="my-secret")
+        auth = create_auth_provider()
     """
     if auth_service is None:
-        from .backends import create_stores_from_env
+        from .backends import create_stores_from_env, create_vault_client_from_env
         from .groups import GroupRegistry
+        from .jwt_secret_provider import JwtSecretProvider
         from .service import AuthService
 
-        token_store, group_store = create_stores_from_env()
+        if secret_provider is None:
+            vault_client = create_vault_client_from_env("GOFR")
+            secret_provider = JwtSecretProvider(vault_client=vault_client)
+            token_store, group_store = create_stores_from_env("GOFR", vault_client=vault_client)
+        else:
+            token_store, group_store = create_stores_from_env("GOFR")
         groups = GroupRegistry(store=group_store)
         auth_service = AuthService(
             token_store=token_store,
             group_registry=groups,
-            secret_key=secret_key,
+            secret_provider=secret_provider,
         )
 
     return AuthProvider(auth_service=auth_service, auditor=auditor)

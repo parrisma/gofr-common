@@ -16,6 +16,7 @@ import pytest
 from gofr_common.auth import (
     AuthService,
     GroupRegistry,
+    JwtSecretProvider,
     TokenRevokedError,
     VaultClient,
     VaultConfig,
@@ -111,10 +112,15 @@ def group_registry(group_store: VaultGroupStore) -> GroupRegistry:
 @pytest.fixture
 def auth_service(token_store: VaultTokenStore, group_registry: GroupRegistry) -> AuthService:
     """Create an AuthService with Vault backends."""
+    from unittest.mock import MagicMock
+
+    mock_vault = MagicMock(spec=VaultClient)
+    mock_vault.read_secret.return_value = {"value": "integration-test-secret"}
+    secret_provider = JwtSecretProvider(vault_client=mock_vault)
     return AuthService(
         token_store=token_store,
         group_registry=group_registry,
-        secret_key="integration-test-secret",
+        secret_provider=secret_provider,
     )
 
 
@@ -219,7 +225,9 @@ class TestVaultTokenStoreIntegration:
         token_id = str(uuid4())
         assert token_store.exists(token_id) is False
 
-        record = TokenRecord.create(groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1))
+        record = TokenRecord.create(
+            groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1)
+        )
         token_store.put(token_id, record)
 
         assert token_store.exists(token_id) is True
@@ -249,7 +257,9 @@ class TestVaultTokenStoreIntegration:
         from gofr_common.auth.tokens import TokenRecord
 
         token_id = str(uuid4())
-        record = TokenRecord.create(groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1))
+        record = TokenRecord.create(
+            groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1)
+        )
         token_store.put(token_id, record)
 
         assert token_store.exists(token_id) is True
@@ -263,7 +273,9 @@ class TestVaultTokenStoreIntegration:
         # Store some tokens
         for _ in range(3):
             token_id = str(uuid4())
-            record = TokenRecord.create(groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1))
+            record = TokenRecord.create(
+                groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1)
+            )
             token_store.put(token_id, record)
 
         assert len(token_store) >= 3
@@ -280,7 +292,9 @@ class TestVaultTokenStoreIntegration:
 
         for i in range(5):
             token_id = str(uuid4())
-            record = TokenRecord.create(groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1))
+            record = TokenRecord.create(
+                groups=["public"], expires_at=datetime.utcnow() + timedelta(hours=1)
+            )
             token_store.put(token_id, record)
 
         assert len(token_store) == initial_count + 5
@@ -500,12 +514,16 @@ class TestMultiClientIntegration:
         auth_a = AuthService(
             token_store=token_store_a,
             group_registry=registry_a,
-            secret_key="shared-secret",
+            secret_provider=JwtSecretProvider(
+                vault_client=vault_client, vault_path="gofr/config/jwt-signing-secret"
+            ),
         )
         auth_b = AuthService(
             token_store=token_store_b,
             group_registry=registry_b,
-            secret_key="shared-secret",
+            secret_provider=JwtSecretProvider(
+                vault_client=vault_client, vault_path="gofr/config/jwt-signing-secret"
+            ),
         )
 
         # Create token on A
@@ -534,12 +552,16 @@ class TestMultiClientIntegration:
         auth_a = AuthService(
             token_store=token_store_a,
             group_registry=registry_a,
-            secret_key="shared-secret",
+            secret_provider=JwtSecretProvider(
+                vault_client=vault_client, vault_path="gofr/config/jwt-signing-secret"
+            ),
         )
         auth_b = AuthService(
             token_store=token_store_b,
             group_registry=registry_b,
-            secret_key="shared-secret",
+            secret_provider=JwtSecretProvider(
+                vault_client=vault_client, vault_path="gofr/config/jwt-signing-secret"
+            ),
         )
 
         # Create token on A
@@ -812,9 +834,7 @@ class TestVaultTokenStoreCaching:
         # Cleanup
         store.clear()
 
-    def test_cross_instance_token_visibility(
-        self, vault_client: VaultClient, unique_prefix: str
-    ):
+    def test_cross_instance_token_visibility(self, vault_client: VaultClient, unique_prefix: str):
         """Test that token created on one instance is visible on another (simulates auth_manager + MCP server)."""
         from gofr_common.auth.tokens import TokenRecord
 
