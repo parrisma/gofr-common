@@ -16,6 +16,7 @@
 #     - gofr-doc
 #     - gofr-np
 #     - gofr-iq
+#     - gofr-console
 #   If any are missing, the script will fail fast.
 
 set -e
@@ -165,6 +166,7 @@ _require_dir "$REPO_DOC" "gofr-doc"
 _require_dir "$REPO_NP" "gofr-np"
 _require_dir "$REPO_IQ" "gofr-iq"
 _require_dir "$REPO_CONSOLE" "gofr-console"
+_require_dir "$GOFR_COMMON_HOST_DIR" "gofr-common (as submodule under gofr-dig/lib/gofr-common)"
 _require_file "$GOFR_COMMON_DOCKERFILE" "gofr-common dev Dockerfile missing"
 
 # Ensure base image exists (required by Dockerfile.dev)
@@ -207,6 +209,11 @@ CONTAINER_ID=$(docker run -d \
     -v "$REPO_NP:/home/${GOFR_USER}/devroot/gofr-np:rw" \
     -v "$REPO_IQ:/home/${GOFR_USER}/devroot/gofr-iq:rw" \
     -v "$REPO_CONSOLE:/home/${GOFR_USER}/devroot/gofr-console:rw" \
+    -v "$GOFR_COMMON_HOST_DIR:/home/${GOFR_USER}/devroot/gofr-common:rw" \
+    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-dig/secrets:rw \
+    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-doc/secrets:rw \
+    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-np/secrets:rw \
+    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-iq/secrets:rw \
     $DOCKER_GID_ARGS \
     "$IMAGE_NAME" 2>&1) || {
     echo ""
