@@ -8,6 +8,15 @@
 #
 # Usage:
 #   - Run from /home/gofr/devroot (recommended), OR pass --workspace-root
+#
+# IMPORTANT:
+#   This script expects to be run from (or pointed at) a workspace root directory
+#   that contains all required GOFR repos checked out as siblings:
+#     - gofr-dig
+#     - gofr-doc
+#     - gofr-np
+#     - gofr-iq
+#   If any are missing, the script will fail fast.
 
 set -e
 
@@ -68,6 +77,7 @@ REPO_DIG="${WORKSPACE_ROOT}/gofr-dig"
 REPO_DOC="${WORKSPACE_ROOT}/gofr-doc"
 REPO_NP="${WORKSPACE_ROOT}/gofr-np"
 REPO_IQ="${WORKSPACE_ROOT}/gofr-iq"
+REPO_CONSOLE="${WORKSPACE_ROOT}/gofr-console"
 
 GOFR_COMMON_HOST_DIR="${REPO_DIG}/lib/gofr-common"
 GOFR_COMMON_DOCKERFILE="${GOFR_COMMON_HOST_DIR}/docker/Dockerfile.dev"
@@ -154,7 +164,7 @@ _require_dir "$REPO_DIG" "gofr-dig"
 _require_dir "$REPO_DOC" "gofr-doc"
 _require_dir "$REPO_NP" "gofr-np"
 _require_dir "$REPO_IQ" "gofr-iq"
-_require_dir "$GOFR_COMMON_HOST_DIR" "gofr-common (as submodule under gofr-dig/lib/gofr-common)"
+_require_dir "$REPO_CONSOLE" "gofr-console"
 _require_file "$GOFR_COMMON_DOCKERFILE" "gofr-common dev Dockerfile missing"
 
 # Ensure base image exists (required by Dockerfile.dev)
@@ -196,11 +206,7 @@ CONTAINER_ID=$(docker run -d \
     -v "$REPO_DOC:/home/${GOFR_USER}/devroot/gofr-doc:rw" \
     -v "$REPO_NP:/home/${GOFR_USER}/devroot/gofr-np:rw" \
     -v "$REPO_IQ:/home/${GOFR_USER}/devroot/gofr-iq:rw" \
-    -v "$GOFR_COMMON_HOST_DIR:/home/${GOFR_USER}/devroot/gofr-common:rw" \
-    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-dig/secrets:rw \
-    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-doc/secrets:rw \
-    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-np/secrets:rw \
-    -v ${SECRETS_VOLUME}:/home/${GOFR_USER}/devroot/gofr-iq/secrets:rw \
+    -v "$REPO_CONSOLE:/home/${GOFR_USER}/devroot/gofr-console:rw" \
     $DOCKER_GID_ARGS \
     "$IMAGE_NAME" 2>&1) || {
     echo ""
