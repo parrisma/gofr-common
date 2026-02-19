@@ -137,11 +137,11 @@ path "secret/data/services/doc/*" {
 path "secret/data/tokens/doc" {
   capabilities = ["read"]
 }
-# Read/write doc auth data (groups, tokens, session metadata)
-path "secret/data/gofr/doc/auth/*" {
+# Read/write shared GOFR auth data (groups, tokens)
+path "secret/data/gofr/auth/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
-path "secret/metadata/gofr/doc/auth/*" {
+path "secret/metadata/gofr/auth/*" {
   capabilities = ["list", "read", "delete"]
 }
 """
