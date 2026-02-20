@@ -169,7 +169,7 @@ def store_jwt_secret_in_vault(prefix: str, jwt_secret: str, quiet: bool = False)
     if backend != "vault":
         return True
 
-    log_info("Storing JWT signing secret in Vault...", quiet)
+    log_info("Checking JWT signing secret in Vault...", quiet)
 
     try:
         vault_url = os.environ.get(f"{prefix}_VAULT_URL")
@@ -182,9 +182,13 @@ def store_jwt_secret_in_vault(prefix: str, jwt_secret: str, quiet: bool = False)
         config = VaultConfig(url=vault_url, token=vault_token)
         client = VaultClient(config)
 
-        # Store at gofr/config/jwt-signing-secret (consistent with original bootstrap.py)
-        client.write_secret("gofr/config/jwt-signing-secret", {"value": jwt_secret})
-        log_success("JWT signing secret stored in Vault", quiet)
+        # Idempotent: only write if secret does not already exist in Vault
+        existing = client.read_secret("gofr/config/jwt-signing-secret")
+        if existing and existing.get("value"):
+            log_success("JWT signing secret already exists in Vault (unchanged)", quiet)
+        else:
+            client.write_secret("gofr/config/jwt-signing-secret", {"value": jwt_secret})
+            log_success("JWT signing secret stored in Vault", quiet)
         return True
 
     except Exception as e:
