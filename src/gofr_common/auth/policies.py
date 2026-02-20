@@ -150,6 +150,26 @@ path "secret/metadata/gofr/auth/*" {
     + POLICY_GOFR_AUTH_RUNTIME_READ
 )
 
+# NP Service Policy
+# - Read own secrets (if any)
+# - Read global config
+# - Read GOFR shared config (JWT signing)
+POLICY_NP_READ = (
+    """
+# Read NP-specific secrets
+path "secret/data/services/np/*" {
+  capabilities = ["read"]
+}
+# Read specific token for this service if needed
+path "secret/data/tokens/np" {
+  capabilities = ["read"]
+}
+"""
+    + POLICY_GLOBAL_READ
+    + POLICY_GOFR_CONFIG_READ
+    + POLICY_GOFR_AUTH_RUNTIME_READ
+)
+
 # Admin Control Policy
 # - Read GOFR shared config
 # - Read/write GOFR auth data
@@ -162,5 +182,6 @@ POLICIES = {
     "gofr-dig-policy": POLICY_DIG_READ,
     "gofr-dig-logging-policy": POLICY_GOFR_DIG_LOGGING_READ,
     "gofr-doc-policy": POLICY_DOC_READ,
+    "gofr-np-policy": POLICY_NP_READ,
     "gofr-admin-control-policy": POLICY_ADMIN_CONTROL,
 }
