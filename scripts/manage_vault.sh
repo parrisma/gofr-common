@@ -158,21 +158,45 @@ start() {
   log "Waiting for health..."
   sleep 3
   docker compose -f "${COMPOSE_FILE}" ps
-  
-  # Smart start: check if needs bootstrap
-  if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
-    log "⚠ Vault needs initialization - run: $0 bootstrap"
-  else
-    # Wait for API to stabilize after start
-    wait_vault_api_ready 10 || true
-    if is_vault_sealed; then
-      log "⚠ Vault is sealed - run: $0 unseal"
-    else
-      log "Vault is ready"
-      # Run health check
-      health_check || true
-    fi
+
+  # Smart start:
+  # - Determine readiness based on Vault's own status (initialized/sealed)
+  # - Only then consider whether local on-disk secrets are present
+  #
+  # In multi-repo setups, Vault can be initialized already while this repo's
+  # ${SECRETS_DIR} is empty; in that case we should not claim Vault is
+  # uninitialized.
+  wait_vault_api_ready 10 || true
+
+  local status_json
+  status_json=$(docker exec "${CONTAINER_NAME}" vault status -format=json 2>/dev/null) || true
+  if [ -z "${status_json}" ]; then
+    log "⚠ Vault API not reachable yet; try again or check logs: $0 logs"
+    return 0
   fi
+
+  local initialized
+  initialized=$(echo "$status_json" | grep -o '"initialized": *[a-z]*' | sed 's/.*: *//')
+  if [ "$initialized" != "true" ]; then
+    log "⚠ Vault needs initialization - run: $0 bootstrap"
+    return 0
+  fi
+
+  if is_vault_sealed; then
+    log "⚠ Vault is sealed - run: $0 unseal"
+    return 0
+  fi
+
+  if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
+    log "⚠ Vault is initialized and unsealed, but local root token is missing at ${SECRETS_DIR}/vault_root_token"
+    log "  If you use shared secrets volumes, seed them and/or copy tokens into ${SECRETS_DIR}."
+    log "  Otherwise run: $0 bootstrap"
+    return 0
+  fi
+
+  log "Vault is ready"
+  # Run health check (best-effort)
+  health_check || true
 }
 
 stop() {
