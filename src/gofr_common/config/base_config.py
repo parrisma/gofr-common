@@ -187,4 +187,9 @@ class InfrastructureConfig(BaseConfig):
             if not self.vault_url:
                 raise ValueError("Vault URL required when env=PROD.")
             if not (self.vault_token or (self.vault_role_id and self.vault_secret_id)):
-                raise ValueError("Vault token or AppRole credentials required when env=PROD.")
+                # VaultIdentity is supported via a mounted JSON file.
+                # If present, runtime auth can use it without env creds.
+                if not Path("/run/secrets/vault_creds").exists():
+                    raise ValueError(
+                        "Vault token or AppRole credentials required when env=PROD."
+                    )
