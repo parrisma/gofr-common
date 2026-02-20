@@ -133,6 +133,7 @@ except ImportError:  # FastAPI is optional for CLI usage
 
 
 from .jwt_secret_provider import JwtSecretProvider
+from .openrouter_key_provider import OpenRouterKeyProvider
 from .service import AuthService
 from .token_service import TokenService
 from .tokens import TokenInfo, TokenRecord
@@ -144,6 +145,8 @@ __all__ = [
     "TokenService",
     # JWT Secret Provider
     "JwtSecretProvider",
+    # LLM API Key Provider (Vault)
+    "OpenRouterKeyProvider",
     # Provider (DI - recommended)
     "AuthProvider",
     "SecurityAuditorProtocol",
