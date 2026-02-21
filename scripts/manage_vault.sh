@@ -11,6 +11,14 @@ SECRETS_DIR="${PROJECT_ROOT}/secrets"
 DATA_DIR="${PROJECT_ROOT}/data/vault"
 CONTAINER_NAME="gofr-vault"
 
+# Phase 1 hardening:
+# - Never rely on gofr-secrets (runtime) volume as the long-term home for
+#   bootstrap artifacts.
+# - Prefer a dedicated bootstrap volume for root token/unseal key.
+# - Keep legacy recovery from gofr-secrets for transition only.
+BOOTSTRAP_VOLUME="gofr-vault-bootstrap"
+LEGACY_RUNTIME_VOLUME="gofr-secrets"
+
 # Auto-detect if running inside a container
 if [ -f "/.dockerenv" ] || grep -qa "docker" /proc/1/cgroup 2>/dev/null; then
   VAULT_ADDR_DEFAULT="http://gofr-vault:8201"
@@ -20,6 +28,130 @@ fi
 
 log() { echo "[vault-manage] $*"; }
 err() { echo "[vault-manage][ERROR] $*" >&2; }
+
+volume_read_file() {
+  local volume="$1"
+  local relpath="$2"
+
+  if ! docker volume inspect "${volume}" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  docker run --rm -v "${volume}:/s:ro" alpine:3.19 sh -c "cat '/s/${relpath}'" 2>/dev/null
+}
+
+ensure_bootstrap_volume() {
+  if ! docker volume inspect "${BOOTSTRAP_VOLUME}" >/dev/null 2>&1; then
+    log "Creating bootstrap volume: ${BOOTSTRAP_VOLUME}"
+    docker volume create "${BOOTSTRAP_VOLUME}" >/dev/null
+  fi
+}
+
+sync_bootstrap_artifacts_to_volume() {
+  # Best-effort: keep bootstrap volume updated with local bootstrap artifacts.
+  if [ ! -f "${SECRETS_DIR}/vault_root_token" ] || [ ! -f "${SECRETS_DIR}/vault_unseal_key" ]; then
+    return 0
+  fi
+
+  ensure_bootstrap_volume
+
+  local helper="gofr-vault-bootstrap-sync-$$"
+  docker run -d --name "${helper}" -v "${BOOTSTRAP_VOLUME}:/dst" alpine:3.19 sleep 60 >/dev/null
+
+  docker exec "${helper}" sh -c 'chmod 700 /dst || true' >/dev/null 2>&1 || true
+  docker cp "${SECRETS_DIR}/vault_root_token" "${helper}:/dst/vault_root_token" >/dev/null 2>&1 || true
+  docker cp "${SECRETS_DIR}/vault_unseal_key" "${helper}:/dst/vault_unseal_key" >/dev/null 2>&1 || true
+  if [ -f "${SECRETS_DIR}/bootstrap_tokens.json" ]; then
+    docker cp "${SECRETS_DIR}/bootstrap_tokens.json" "${helper}:/dst/bootstrap_tokens.json" >/dev/null 2>&1 || true
+  fi
+
+  docker exec "${helper}" sh -c 'chmod 600 /dst/vault_root_token /dst/vault_unseal_key 2>/dev/null || true' >/dev/null 2>&1 || true
+  docker rm -f "${helper}" >/dev/null 2>&1 || true
+}
+
+vault_initialized_unsealed() {
+  local status_json
+  status_json=$(docker exec "${CONTAINER_NAME}" vault status -format=json 2>/dev/null) || true
+  if [ -z "${status_json}" ]; then
+    return 1
+  fi
+
+  local initialized sealed
+  initialized=$(echo "${status_json}" | grep -o '"initialized": *[a-z]*' | sed 's/.*: *//')
+  sealed=$(echo "${status_json}" | grep -o '"sealed": *[a-z]*' | sed 's/.*: *//')
+  [ "${initialized}" = "true" ] && [ "${sealed}" = "false" ]
+}
+
+vault_token_valid() {
+  local token="$1"
+  if [ -z "${token}" ]; then
+    return 1
+  fi
+  docker exec -e VAULT_ADDR="http://127.0.0.1:8201" -e VAULT_TOKEN="${token}" \
+    "${CONTAINER_NAME}" vault token lookup >/dev/null 2>&1
+}
+
+reconcile_local_bootstrap_artifacts() {
+  # Self-heal:
+  # - If Vault is already initialized+unsealed but local token/unseal key are
+  #   missing, attempt to restore them from the bootstrap volume.
+  # - If local root token exists but is invalid/revoked, attempt the same.
+  # - Legacy: fall back to reading from gofr-secrets volume (transition only).
+
+  if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+    return 0
+  fi
+
+  if ! vault_initialized_unsealed; then
+    return 0
+  fi
+
+  ensure_dirs
+
+  local need_recover=false
+  if [ ! -f "${SECRETS_DIR}/vault_root_token" ] || [ ! -f "${SECRETS_DIR}/vault_unseal_key" ]; then
+    need_recover=true
+  elif ! vault_token_valid "$(cat "${SECRETS_DIR}/vault_root_token" 2>/dev/null || true)"; then
+    need_recover=true
+  fi
+
+  if [ "${need_recover}" != "true" ]; then
+    return 0
+  fi
+
+  log "Reconciling local Vault bootstrap artifacts (missing or invalid)..."
+
+  local token=""
+  token="$(volume_read_file "${BOOTSTRAP_VOLUME}" vault_root_token || true)"
+  if [ -z "${token}" ]; then
+    token="$(volume_read_file "${LEGACY_RUNTIME_VOLUME}" vault_root_token || true)"
+  fi
+
+  local unseal=""
+  unseal="$(volume_read_file "${BOOTSTRAP_VOLUME}" vault_unseal_key || true)"
+  if [ -z "${unseal}" ]; then
+    unseal="$(volume_read_file "${LEGACY_RUNTIME_VOLUME}" vault_unseal_key || true)"
+  fi
+
+  if [ -n "${token}" ]; then
+    echo -n "${token}" > "${SECRETS_DIR}/vault_root_token"
+    chmod 600 "${SECRETS_DIR}/vault_root_token" 2>/dev/null || true
+  fi
+  if [ -n "${unseal}" ]; then
+    echo -n "${unseal}" > "${SECRETS_DIR}/vault_unseal_key"
+    chmod 600 "${SECRETS_DIR}/vault_unseal_key" 2>/dev/null || true
+  fi
+
+  if [ -f "${SECRETS_DIR}/vault_root_token" ] && vault_token_valid "$(cat "${SECRETS_DIR}/vault_root_token" 2>/dev/null || true)"; then
+    log "✓ Local root token recovered and validated"
+    sync_bootstrap_artifacts_to_volume || true
+    return 0
+  fi
+
+  err "Vault is initialized+unsealed but a valid local root token could not be recovered."
+  err "Fix: seed ${BOOTSTRAP_VOLUME} with vault_root_token/vault_unseal_key or re-run Vault bootstrap."
+  return 1
+}
 
 # Wait until Vault API is responsive and unsealed (or confirm sealed state).
 # Returns 0 if unsealed, 1 if sealed, 2 if unreachable.
@@ -113,6 +245,9 @@ health_check() {
     return 1
   fi
   log "✓ Vault is unsealed"
+
+  # Self-heal: recover missing/stale local bootstrap artifacts where possible.
+  reconcile_local_bootstrap_artifacts || return 1
   
   # Check secrets exist
   if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
@@ -144,6 +279,11 @@ health_check() {
     return 2  # Warning, not error
   fi
   log "✓ Auth is bootstrapped"
+
+  # Best-effort: keep bootstrap volume synced on successful health.
+  # This ensures other repos can recover missing local tokens without relying
+  # on the runtime gofr-secrets volume.
+  sync_bootstrap_artifacts_to_volume || true
   
   log "=== All Health Checks Passed ==="
   return 0
@@ -345,6 +485,16 @@ bootstrap() {
     fi
   fi
 
+  # Reconcile missing/stale local token for the "already initialized" case.
+  reconcile_local_bootstrap_artifacts || return 1
+
+  # Validate root token is usable before configuring anything.
+  if ! vault_token_valid "$(cat "${SECRETS_DIR}/vault_root_token" 2>/dev/null || true)"; then
+    err "Local vault_root_token is present but invalid/revoked: ${SECRETS_DIR}/vault_root_token"
+    err "Fix: seed ${BOOTSTRAP_VOLUME} with a valid token or re-run Vault init/bootstrap."
+    return 1
+  fi
+
   # Verify Vault API is truly ready before configuring
   log "Confirming Vault API is ready..."
   if ! wait_vault_api_ready 10; then
@@ -416,6 +566,9 @@ bootstrap() {
   
   # Run final health check
   health_check
+
+  # Keep bootstrap volume synced (best-effort)
+  sync_bootstrap_artifacts_to_volume || true
 }
 
 case "${1:-}" in

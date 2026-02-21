@@ -397,7 +397,7 @@ main() {
   run_step "Build vault image" build_vault_image || true
   run_step "Ensure networks" ensure_networks || true
   run_step "Ensure volumes" ensure_volumes || true
-  run_step "Start and bootstrap Vault" start_and_bootstrap_vault || true
+  run_step "Start and bootstrap Vault" start_and_bootstrap_vault
   run_step "Seed secrets volume" seed_secrets_volume || true
 
   echo ""
