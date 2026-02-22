@@ -50,9 +50,18 @@ class OpenRouterKeyProvider:
 
             secret_data = self._vault_client.read_secret(self._vault_path)
             if not secret_data or "value" not in secret_data:
+                mount_point = getattr(getattr(self._vault_client, "config", None), "mount_point", "secret")
+                full_path = f"{mount_point}/{self._vault_path}"
                 raise RuntimeError(
-                    f"OpenRouter API key not found at Vault path '{self._vault_path}' "
-                    f"or missing 'value' key"
+                    "OpenRouter API key missing in Vault. "
+                    f"Expected a KV v2 secret at '{full_path}' with field 'value'. "
+                    "\n\nHow it should get there:" 
+                    "\n- Prod/dev: write the key to Vault (example: `vault kv put "
+                    + full_path
+                    + " value=sk-or-v1-...`)."
+                    "\n- Tests with ephemeral Vault: your test runner must seed Vault before starting services "
+                    "(in gofr-iq this is done by `scripts/run_tests.sh`, using GOFR_IQ_OPENROUTER_API_KEY or secrets/llm_api_key)."
+                    "\n- Override: set GOFR_IQ_OPENROUTER_API_KEY in the environment to bypass Vault."
                 )
 
             new_key: str = secret_data["value"]
