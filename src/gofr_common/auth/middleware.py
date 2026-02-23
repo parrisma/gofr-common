@@ -4,14 +4,19 @@ Provides utilities for validating JWT tokens in web requests,
 including multi-group authorization helpers.
 """
 
+from __future__ import annotations
+
 import hashlib
-from typing import Any, Callable, List, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Protocol
 
 from fastapi import HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .service import AuthService
 from .tokens import TokenInfo
+
+if TYPE_CHECKING:
+    from .jwt_secret_provider import JwtSecretProvider
 
 
 class SecurityAuditorProtocol(Protocol):
@@ -62,41 +67,50 @@ def _generate_fingerprint(request: Request) -> str:
 
 def init_auth_service(
     auth_service: Optional[AuthService] = None,
-    secret_key: Optional[str] = None,
+    secret_provider: Optional[JwtSecretProvider] = None,
+    env_prefix: str = "GOFR",
 ) -> AuthService:
     """Initialize the global auth service.
 
     Args:
         auth_service: Existing AuthService instance (preferred).
             If not provided, creates one using create_stores_from_env().
-        secret_key: JWT secret key (only used if auth_service not provided).
-            Defaults to GOFR_JWT_SECRET environment variable.
+        secret_provider: JwtSecretProvider instance used to load the JWT signing secret.
+            If not provided, one is created from environment configuration.
+        env_prefix: Environment variable prefix for Vault/auth settings (default: GOFR).
 
     Returns:
         AuthService instance
 
     Example:
         # Option 1: Pass existing service (recommended)
-        auth = AuthService(token_store=..., group_registry=..., secret_key=...)
+        auth = AuthService(token_store=..., group_registry=..., secret_provider=...)
         init_auth_service(auth_service=auth)
 
         # Option 2: Create from environment
-        init_auth_service(secret_key="your-secret")
+        init_auth_service(env_prefix="GOFR")
     """
     global _auth_service
 
     if auth_service is not None:
         _auth_service = auth_service
     else:
-        from .backends import create_stores_from_env
+        from .backends import create_stores_from_env, create_vault_client_from_env
         from .groups import GroupRegistry
+        from .jwt_secret_provider import JwtSecretProvider
 
-        token_store, group_store = create_stores_from_env()
+        if secret_provider is None:
+            vault_client = create_vault_client_from_env(env_prefix)
+            secret_provider = JwtSecretProvider(vault_client=vault_client)
+            token_store, group_store = create_stores_from_env(env_prefix, vault_client=vault_client)
+        else:
+            token_store, group_store = create_stores_from_env(env_prefix)
         groups = GroupRegistry(store=group_store)
         _auth_service = AuthService(
             token_store=token_store,
             group_registry=groups,
-            secret_key=secret_key,
+            secret_provider=secret_provider,
+            env_prefix=env_prefix,
         )
 
     return _auth_service

@@ -19,19 +19,21 @@ LOG_FILE=""
 SCRIPT_START_TS=""
 NO_LOG=false
 STEP=0
+FORCE_REBUILD=false
 
 usage() {
   cat << 'EOF'
 GOFR Platform Bootstrap (shared infrastructure)
 
 Usage:
-  ./lib/gofr-common/scripts/bootstrap_platform.sh [--yes] [--trace] [--log-file PATH] [--no-log]
+  ./lib/gofr-common/scripts/bootstrap_platform.sh [--yes] [--trace] [--log-file PATH] [--no-log] [--force-rebuild]
 
 Options:
   --yes, -y    Run non-interactively and auto-accept prompts
   --trace      Enable bash xtrace for detailed logs
   --log-file   Write logs to a specific file path
   --no-log     Disable file logging (stdout/stderr only)
+  --force-rebuild  Remove shared images/volumes before rebuild (DESTRUCTIVE)
   --help, -h   Show this help
 
 This script will:
@@ -65,6 +67,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-log)
       NO_LOG=true
+      shift
+      ;;
+    --force-rebuild)
+      FORCE_REBUILD=true
       shift
       ;;
     --help|-h)
@@ -301,7 +307,7 @@ ensure_networks() {
 }
 
 ensure_volumes() {
-  local volumes=("gofr-vault-data" "gofr-vault-logs" "gofr-vault-file")
+  local volumes=("gofr-vault-data" "gofr-vault-logs" "gofr-vault-file" "gofr-vault-bootstrap")
   local missing=()
 
   for vol in "${volumes[@]}"; do
@@ -326,6 +332,35 @@ ensure_volumes() {
     docker volume create "$vol" >/dev/null
     ok "Created volume: $vol"
   done
+}
+
+force_rebuild_cleanup() {
+  if [[ "${FORCE_REBUILD}" != "true" ]]; then
+    return 0
+  fi
+
+  warn "--force-rebuild selected: this will DELETE shared images and volumes."
+  warn "This may affect other GOFR projects on the same Docker host."
+  if ! confirm "Proceed with force rebuild cleanup?"; then
+    die "Refusing to run with --force-rebuild without confirmation." "Re-run without --force-rebuild or pass --yes to auto-accept."
+  fi
+
+  local manage_script="${COMMON_ROOT}/scripts/manage_vault.sh"
+  if [[ -f "${manage_script}" ]]; then
+    info "Stopping Vault (best-effort) before removing volumes..."
+    bash "${manage_script}" stop >/dev/null 2>&1 || true
+  fi
+
+  info "Removing images (best-effort): gofr-base:latest, gofr-vault:latest"
+  docker rmi -f gofr-base:latest >/dev/null 2>&1 || true
+  docker rmi -f gofr-vault:latest >/dev/null 2>&1 || true
+
+  info "Removing Vault volumes (best-effort): gofr-vault-data, gofr-vault-logs, gofr-vault-file, gofr-vault-bootstrap"
+  for vol in gofr-vault-data gofr-vault-logs gofr-vault-file gofr-vault-bootstrap; do
+    docker volume rm -f "${vol}" >/dev/null 2>&1 || true
+  done
+
+  ok "Force rebuild cleanup complete."
 }
 
 start_and_bootstrap_vault() {
@@ -392,6 +427,8 @@ main() {
 
   run_step "Validate Docker availability" require_docker
   run_step "Ensure submodule" ensure_submodule
+
+  run_step "Force rebuild cleanup" force_rebuild_cleanup || true
 
   run_step "Build base image" build_base_image || true
   run_step "Build vault image" build_vault_image || true

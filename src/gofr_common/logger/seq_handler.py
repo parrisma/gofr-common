@@ -23,7 +23,6 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-
 # SEQ CLEF (Compact Log Event Format) level mapping
 _LEVEL_MAP: dict[int, str] = {
     logging.DEBUG: "Debug",
@@ -244,8 +243,8 @@ class SeqHandler(logging.Handler):
 
     def _post_clef(self, payload: str) -> None:
         """POST a CLEF payload to SEQ's /api/events/raw endpoint."""
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         url = f"{self._server_url}/api/events/raw?clef"
         headers: dict[str, str] = {"Content-Type": "application/vnd.serilog.clef"}

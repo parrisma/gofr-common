@@ -41,6 +41,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from .tokens import TokenInfo
 
 if TYPE_CHECKING:
+    from .jwt_secret_provider import JwtSecretProvider
     from .service import AuthService
 
 

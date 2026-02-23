@@ -384,7 +384,7 @@ if [ "$SKIP_LINT" = false ]; then
         LINT_EXIT_CODE=$?
     else
         if [ "$USE_UV" = true ]; then
-            uv run ${RUFF_CMD}
+            uv run --group dev ${RUFF_CMD}
             LINT_EXIT_CODE=$?
         elif command -v ruff &> /dev/null; then
             ${RUFF_CMD}
@@ -411,7 +411,9 @@ if [ "$SKIP_LINT" = false ]; then
     # -------------------------------------------------------------------------
     # Check if pyright is available (installed with: uv add "pyright[nodejs]")
     PYRIGHT_AVAILABLE=false
-    if command -v pyright &> /dev/null; then
+    if [ "$USE_UV" = true ]; then
+        PYRIGHT_AVAILABLE=true
+    elif command -v pyright &> /dev/null; then
         PYRIGHT_AVAILABLE=true
     elif [ -f "${VENV_DIR}/bin/pyright" ]; then
         PYRIGHT_AVAILABLE=true
@@ -420,14 +422,15 @@ if [ "$SKIP_LINT" = false ]; then
     if [ "$PYRIGHT_AVAILABLE" = true ]; then
         echo -e "${BLUE}Running type checks (pyright)...${NC}"
         
-        PYRIGHT_CMD="pyright src/"
+        # Use python -m for reliability (venv/uv shebang wrappers can go stale)
+        PYRIGHT_CMD="python -m pyright src/"
         
         if [ "$USE_DOCKER" = true ]; then
             docker exec "${CONTAINER_NAME}" bash -c "cd /home/${PROJECT_NAME} && source .venv/bin/activate && ${PYRIGHT_CMD}"
             TYPE_EXIT_CODE=$?
         else
             if [ "$USE_UV" = true ]; then
-                uv run ${PYRIGHT_CMD}
+                uv run --group dev ${PYRIGHT_CMD}
                 TYPE_EXIT_CODE=$?
             elif command -v pyright &> /dev/null; then
                 ${PYRIGHT_CMD}

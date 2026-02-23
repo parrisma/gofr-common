@@ -13,7 +13,7 @@ Usage:
 
     # Check and unseal if needed
     if bootstrap.ensure_unsealed(unseal_key):
-        print("Vault ready")
+        pass  # Vault ready
 
     # Full initialization (first time only)
     if bootstrap.is_uninitialized():
@@ -22,6 +22,7 @@ Usage:
 """
 
 import json
+import logging
 import os
 import stat
 import urllib.error
@@ -29,6 +30,13 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
+
+try:
+    from gofr_common.logger import get_logger
+
+    logger = get_logger("vault.bootstrap")
+except Exception:  # pragma: no cover
+    logger = logging.getLogger("vault.bootstrap")
 
 
 @dataclass
@@ -286,7 +294,9 @@ class VaultBootstrap:
     def auto_init_and_unseal(
         self,
         secrets_dir: Path,
-        force_init: bool = False
+        force_init: bool = False,
+        validate_token: bool = False,
+        vault_url: Optional[str] = None,
     ) -> Tuple[bool, Optional[VaultCredentials]]:
         """Automatically initialize and/or unseal Vault.
 
@@ -299,6 +309,9 @@ class VaultBootstrap:
         Returns:
             Tuple of (success: bool, credentials: Optional[VaultCredentials])
         """
+        if vault_url:
+            self.vault_addr = vault_url
+
         # Wait for Vault to be reachable
         if not self.wait_for_ready():
             return False, None
@@ -308,17 +321,17 @@ class VaultBootstrap:
 
         # Handle uninitialized Vault
         if status["http_code"] == self.STATUS_NOT_INITIALIZED or force_init:
-            print("🔧 Initializing Vault...")
+            logger.info("Initializing Vault")
             creds = self.initialize()
             self.save_credentials(creds, secrets_dir)
-            print(f"✅ Vault initialized - credentials saved to {secrets_dir}")
+            logger.info("Vault initialized; credentials saved", extra={"secrets_dir": str(secrets_dir)})
 
             # Unseal the newly initialized Vault
             if self.unseal(creds.unseal_key):
-                print("🔓 Vault unsealed")
+                logger.info("Vault unsealed")
                 return True, creds
             else:
-                print("❌ Failed to unseal Vault after initialization")
+                logger.error("Failed to unseal Vault after initialization")
                 return False, creds
 
         # Handle sealed Vault
@@ -326,26 +339,57 @@ class VaultBootstrap:
             # Try to load existing credentials
             creds = self.load_credentials(secrets_dir)
             if not creds:
-                print(f"❌ Vault is sealed but no credentials found in {secrets_dir}")
+                logger.error(
+                    "Vault is sealed but no credentials found",
+                    extra={"secrets_dir": str(secrets_dir)},
+                )
                 return False, None
 
-            print("🔓 Unsealing Vault...")
+            logger.info("Unsealing Vault")
             if self.unseal(creds.unseal_key):
-                print("✅ Vault unsealed")
+                logger.info("Vault unsealed")
                 return True, creds
             else:
-                print("❌ Failed to unseal Vault")
+                logger.error("Failed to unseal Vault")
                 return False, creds
 
         # Already healthy
         if status["http_code"] in (self.STATUS_HEALTHY, self.STATUS_STANDBY):
             # Load credentials if they exist
             creds = self.load_credentials(secrets_dir)
-            print("✅ Vault is already initialized and unsealed")
+            logger.info("Vault is already initialized and unsealed")
+
+            if validate_token and creds:
+                if not self._token_valid(creds.root_token):
+                    logger.error(
+                        "Vault is healthy but loaded root token is invalid; refusing to report success",
+                        extra={"secrets_dir": str(secrets_dir)},
+                    )
+                    return False, creds
             return True, creds
 
-        print(f"❌ Vault not reachable (status: {status})")
+        logger.error("Vault not reachable", extra={"status": status})
         return False, None
+
+    def _token_valid(self, token: str) -> bool:
+        token = (token or "").strip()
+        if not token:
+            return False
+
+        req = urllib.request.Request(
+            f"{self.vault_addr}/v1/auth/token/lookup-self",
+            headers={"X-Vault-Token": token},
+            method="GET",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                _ = resp.read()
+                return resp.status == 200
+        except urllib.error.HTTPError:
+            return False
+        except Exception:
+            return False
 
 
 # Convenience function for shell scripts

@@ -48,12 +48,31 @@ ensure_bootstrap_volume() {
 }
 
 sync_bootstrap_artifacts_to_volume() {
-  # Best-effort: keep bootstrap volume updated with local bootstrap artifacts.
+  # Best-effort: seed the bootstrap volume with Vault bootstrap artifacts.
+  # Policy:
+  # - Default: seed only if the volume is empty (prevents overwriting a valid
+  #   bootstrap volume with a stale local cache).
+  # - Forced: overwrite when explicitly requested (used during force rebuild or
+  #   re-init scenarios).
+  local force_seed="${1:-false}"
+  if [ "${GOFR_FORCE_BOOTSTRAP_SEED:-}" = "1" ]; then
+    force_seed=true
+  fi
+
   if [ ! -f "${SECRETS_DIR}/vault_root_token" ] || [ ! -f "${SECRETS_DIR}/vault_unseal_key" ]; then
     return 0
   fi
 
   ensure_bootstrap_volume
+
+  if [ "${force_seed}" != "true" ]; then
+    local existing_token existing_unseal
+    existing_token="$(volume_read_file "${BOOTSTRAP_VOLUME}" vault_root_token || true)"
+    existing_unseal="$(volume_read_file "${BOOTSTRAP_VOLUME}" vault_unseal_key || true)"
+    if [ -n "${existing_token}" ] && [ -n "${existing_unseal}" ]; then
+      return 0
+    fi
+  fi
 
   local helper="gofr-vault-bootstrap-sync-$$"
   docker run -d --name "${helper}" -v "${BOOTSTRAP_VOLUME}:/dst" alpine:3.19 sleep 60 >/dev/null
@@ -80,6 +99,17 @@ vault_initialized_unsealed() {
   initialized=$(echo "${status_json}" | grep -o '"initialized": *[a-z]*' | sed 's/.*: *//')
   sealed=$(echo "${status_json}" | grep -o '"sealed": *[a-z]*' | sed 's/.*: *//')
   [ "${initialized}" = "true" ] && [ "${sealed}" = "false" ]
+}
+
+vault_is_initialized() {
+  local status_json
+  status_json=$(docker exec "${CONTAINER_NAME}" vault status -format=json 2>/dev/null) || true
+  if [ -z "${status_json}" ]; then
+    return 1
+  fi
+  local initialized
+  initialized=$(echo "${status_json}" | grep -o '"initialized": *[a-z]*' | sed 's/.*: *//')
+  [ "${initialized}" = "true" ]
 }
 
 vault_token_valid() {
@@ -249,18 +279,30 @@ health_check() {
   # Self-heal: recover missing/stale local bootstrap artifacts where possible.
   reconcile_local_bootstrap_artifacts || return 1
   
-  # Check secrets exist
+  # Check root token exists AND is valid before claiming success.
   if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
     err "Root token not found at ${SECRETS_DIR}/vault_root_token"
     return 1
   fi
-  log "✓ Root token exists"
+
+  local root_token
+  root_token="$(cat "${SECRETS_DIR}/vault_root_token" 2>/dev/null || true)"
+  if ! vault_token_valid "${root_token}"; then
+    err "Root token present but invalid/revoked: ${SECRETS_DIR}/vault_root_token"
+    err "Fix: seed ${BOOTSTRAP_VOLUME} with a valid token (vault_root_token/vault_unseal_key) or re-run Vault bootstrap."
+    return 1
+  fi
+  log "✓ Root token valid"
   
   if [ ! -f "${SECRETS_DIR}/vault_unseal_key" ]; then
     err "Unseal key not found at ${SECRETS_DIR}/vault_unseal_key"
     return 1
   fi
-  log "✓ Unseal key exists"
+  if [ ! -s "${SECRETS_DIR}/vault_unseal_key" ]; then
+    err "Unseal key file is empty: ${SECRETS_DIR}/vault_unseal_key"
+    return 1
+  fi
+  log "✓ Unseal key present"
   
   # Check KV secrets engine is enabled
   export VAULT_ADDR="${VAULT_ADDR_DEFAULT}"
@@ -358,10 +400,17 @@ logs() {
 
 init() {
   ensure_dirs
-  if [ -f "${SECRETS_DIR}/vault_root_token" ]; then
-    err "vault_root_token already exists; skipping init"
+
+  if vault_is_initialized; then
+    err "Vault is initialized; refusing re-init"
+    err "Fix: if you intentionally wiped Vault data and want a fresh init, remove the Vault data volume(s) first, then re-run bootstrap."
     exit 1
   fi
+
+  if [ -f "${SECRETS_DIR}/vault_root_token" ]; then
+    log "⚠ Vault is uninitialized; ignoring stale local vault_root_token and overwriting local cache"
+  fi
+
   log "Initializing Vault (1 key, 1 threshold)..."
   docker exec "${CONTAINER_NAME}" vault operator init -key-shares=1 -key-threshold=1 \
     | tee "${SECRETS_DIR}/vault_init_output"
@@ -387,6 +436,9 @@ init() {
   docker exec -e VAULT_TOKEN="${ROOT_TOKEN}" "${CONTAINER_NAME}" vault auth enable approle || {
     log "AppRole auth already enabled or error occurred"
   }
+
+  # Seed bootstrap volume with fresh init artifacts (forced overwrite).
+  sync_bootstrap_artifacts_to_volume true || true
 }
 
 unseal() {
@@ -451,31 +503,30 @@ bootstrap() {
     log "Vault image exists"
   fi
   
-  # Initialize if needed (this also starts and unseals)
-  if [ ! -f "${SECRETS_DIR}/vault_root_token" ]; then
-    log "Initializing vault for first time..."
+  # Ensure Vault is running and decide init based on live Vault state (not local token file presence).
+  if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     start
-    log "Waiting for Vault API to become reachable..."
-    if ! wait_vault_api_ready 20; then
-      err "Vault API did not become reachable after start"
-      return 1
-    fi
+  fi
+
+  log "Waiting for Vault API to become reachable..."
+  if ! wait_vault_api_ready 20; then
+    err "Vault API did not become reachable after start"
+    return 1
+  fi
+
+  if ! vault_is_initialized; then
+    log "Vault is uninitialized; running init..."
     init
   else
-    log "Vault already initialized"
-    # Ensure it's running
-    if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-      start
-    fi
-    # Wait for Vault API to be reachable after (re)start
+    log "Vault is already initialized"
+
+    # Always check if sealed and unseal if needed (using reliable JSON check)
     log "Waiting for Vault API to stabilize..."
     wait_vault_api_ready 15 || true
-    # Always check if sealed and unseal if needed (using reliable JSON check)
     if is_vault_sealed; then
       log "Vault is sealed — unsealing..."
       unseal
       sleep 2
-      # Verify unseal succeeded
       if is_vault_sealed; then
         err "Vault is still sealed after unseal attempt"
         return 1

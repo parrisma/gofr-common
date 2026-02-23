@@ -15,7 +15,6 @@ from typing import Any, Optional
 
 from .interface import Logger
 
-
 SENSITIVE_KEY_PATTERNS = (
     "token",
     "secret",
@@ -206,6 +205,7 @@ class StructuredLogger(Logger):
         self._session_id = str(uuid.uuid4())[:8]
         self._logger = logging.getLogger(name)
         self._logger.setLevel(level)
+        self._default_extra: dict[str, Any] = {}
 
         # Clear existing handlers to avoid duplication if re-initialized
         if self._logger.hasHandlers():
@@ -234,7 +234,10 @@ class StructuredLogger(Logger):
                 self._logger.addHandler(file_handler)
             except Exception as e:
                 # Fallback to console if file cannot be opened
-                print(f"Failed to setup log file {log_file}: {e}", file=sys.stderr)
+                self._logger.error(
+                    "Failed to setup log file",
+                    extra={"log_file": log_file, "error": str(e)},
+                )
 
         # SEQ Handler (if configured)
         if seq_url:
@@ -248,7 +251,10 @@ class StructuredLogger(Logger):
                 seq_handler.setLevel(level)
                 self._logger.addHandler(seq_handler)
             except Exception as e:
-                print(f"Failed to setup SEQ handler for {seq_url}: {e}", file=sys.stderr)
+                self._logger.error(
+                    "Failed to setup SEQ handler",
+                    extra={"seq_url": seq_url, "error": str(e)},
+                )
 
     def get_session_id(self) -> str:
         """Get the current session ID."""
