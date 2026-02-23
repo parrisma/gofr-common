@@ -21,8 +21,8 @@ Do not run `pytest` or `python` directly. We use helper scripts to ensure all pa
 | Task | Command |
 | :--- | :--- |
 | **Run Tests** | `./scripts/run_tests.sh` |
-| **Make Token** | `./scripts/token_manager.sh create` |
-| **Restart** | `./scripts/restart_servers.sh` |
+| **Make Token** | `source <(./lib/gofr-common/scripts/auth_env.sh --docker) && ./lib/gofr-common/scripts/auth_manager.sh --docker tokens create --groups <group> --name <name>` |
+| **Restart (prod stack)** | `./docker/stop-prod.sh && ./docker/start-prod.sh` |
 | **Backup** | `./scripts/backup_now.sh` |
 
 ## 4. Coding Style
