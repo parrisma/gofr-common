@@ -2,7 +2,11 @@
 # GOFR platform bootstrap helper
 # Idempotent: checks state before acting and provides guided prompts.
 
-set -euo pipefail
+# Hardening:
+# - Use errtrace so ERR trap fires inside functions and subshells.
+# - Restrictive umask so any created files (including logs) are not world-readable.
+set -Eeuo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMON_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -110,6 +114,10 @@ setup_logging() {
       warn "Logging will continue on stdout/stderr only."
       LOG_FILE=""
     else
+      # Ensure log file exists with restrictive permissions before tee attaches.
+      : > "$LOG_FILE" || true
+      chmod 600 "$LOG_FILE" 2>/dev/null || true
+      info "Note: bootstrap logs may include sensitive output depending on downstream scripts."
       exec > >(tee -a "$LOG_FILE") 2>&1
       info "Logging to ${LOG_FILE}"
     fi
@@ -370,7 +378,8 @@ seed_secrets_volume() {
   fi
 
   info "Seeding secrets into Docker volumes (gofr-secrets, gofr-secrets-test)."
-  info "This copies secrets from lib/gofr-common/secrets/ into volumes."
+  info "This should copy ONLY runtime credentials (service_creds/*.json) into shared volumes."
+  info "Hardening: do NOT copy Vault bootstrap artifacts (root token/unseal key) into runtime volumes."
   if ! confirm "Run secrets seeding now?"; then
     warn "Skipping secrets seeding. Containers may not authenticate."
     return 1
