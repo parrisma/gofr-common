@@ -1,6 +1,16 @@
 #!/usr/bin/env python3
 """Unified auth management CLI for GOFR projects.
 
+IMPORTANT:
+    Human operators should run the wrapper script:
+        ./lib/gofr-common/scripts/auth_manager.sh [--docker] <command>
+
+    It is self-contained: it loads SSOT config, performs Vault AppRole login,
+    and sets the required GOFR_* environment for this Python CLI.
+
+    Running this Python script directly is supported for automation, but it
+    requires you to provide the environment variables documented below.
+
 This script provides a single entry point for all authentication management
 operations including group and token management.
 
@@ -9,10 +19,10 @@ QUICK START:
     cd /path/to/gofr-project
     ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
 
-    # Or source environment manually:
-    cd /path/to/gofr-project
-    set -a && source lib/gofr-common/config/gofr_ports.env && set +a
-    export VAULT_TOKEN=$(cat secrets/vault_root_token)
+    # Or run Python directly (advanced - you must set env vars yourself):
+    export GOFR_AUTH_BACKEND=vault
+    export GOFR_VAULT_URL=http://gofr-vault:8201
+    export GOFR_VAULT_TOKEN=...  # minted operator token or root token
 
     # List groups:
     python auth_manager.py --backend vault groups list
@@ -43,7 +53,7 @@ ENVIRONMENT VARIABLES (REQUIRED):
 
     For Vault backend:
     GOFR_VAULT_URL         Vault server URL (e.g., http://gofr-vault:8201)
-    GOFR_VAULT_TOKEN       Vault root token
+    GOFR_VAULT_TOKEN       Vault token (operator or root)
     GOFR_VAULT_PATH_PREFIX Vault KV path prefix (default: gofr/auth)
 
 EXAMPLES:
@@ -170,20 +180,22 @@ def create_auth_service(backend: str = "vault", quiet: bool = True) -> AuthServi
         )
         sys.exit(1)
     else:
-        # Get Vault configuration from environment - NO FALLBACKS
-        vault_url = os.environ.get("GOFR_VAULT_URL")
-        vault_token = os.environ.get("GOFR_VAULT_TOKEN")
+        # Get Vault configuration from environment.
+        # Preferred variables are GOFR_* (used across GOFR services).
+        # For operator convenience, also accept Vault-standard VAULT_*.
+        vault_url = os.environ.get("GOFR_VAULT_URL") or os.environ.get("VAULT_ADDR")
+        vault_token = os.environ.get("GOFR_VAULT_TOKEN") or os.environ.get("VAULT_TOKEN")
         vault_path_prefix = os.environ.get("GOFR_VAULT_PATH_PREFIX", "gofr/auth")
 
         if not vault_url:
             print(
-                "ERROR: GOFR_VAULT_URL environment variable required for vault backend",
+                "ERROR: Vault URL is required. Set GOFR_VAULT_URL (preferred) or VAULT_ADDR.",
                 file=sys.stderr,
             )
             sys.exit(1)
         if not vault_token:
             print(
-                "ERROR: GOFR_VAULT_TOKEN environment variable required for vault backend",
+                "ERROR: Vault token is required. Set GOFR_VAULT_TOKEN (preferred) or VAULT_TOKEN.",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -254,12 +266,19 @@ def cmd_groups_create(auth: AuthService, name: str, description: Optional[str] =
                 # Restore the defunct group
                 existing.is_active = True
                 existing.defunct_at = None
-                auth.groups._store.put(str(existing.id), existing)
+                # Prefer public API when available; fall back to store for older versions.
+                if hasattr(auth.groups, "update_group"):
+                    auth.groups.update_group(existing)
+                else:
+                    auth.groups._store.put(str(existing.id), existing)
                 print(f"Restored defunct group: {name}")
                 print(f"  ID: {existing.id}")
                 if description and description != existing.description:
                     existing.description = description
-                    auth.groups._store.put(str(existing.id), existing)
+                    if hasattr(auth.groups, "update_group"):
+                        auth.groups.update_group(existing)
+                    else:
+                        auth.groups._store.put(str(existing.id), existing)
                     print(f"  Updated description: {description}")
                 elif existing.description:
                     print(f"  Description: {existing.description}")
@@ -334,7 +353,7 @@ def cmd_tokens_list(
         token_id = str(token.id)
         name_str = token.name or ""
         if len(name_str) > 20:
-            name_str = name_str[:19] + "…"
+            name_str = name_str[:19] + "..."
         status_str = token.status
         if token.is_expired and token.status == "active":
             status_str = "expired"
@@ -513,7 +532,7 @@ EXAMPLES:
         %(prog)s --backend vault tokens inspect --name prod-api-server
 
 ENVIRONMENT:
-    Required: GOFR_JWT_SECRET, GOFR_AUTH_BACKEND (or --backend)
+    Required: GOFR_AUTH_BACKEND (or --backend)
     Vault:    GOFR_VAULT_URL, GOFR_VAULT_TOKEN
 
 For full documentation, see script header or run with --help.

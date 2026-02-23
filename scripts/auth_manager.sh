@@ -5,21 +5,22 @@
 # Wrapper for auth_manager.py that handles SSOT environment configuration.
 #
 # RECOMMENDED USAGE:
-#   # Simplest: use auth_env.sh to load secrets, then run this script
-#   source <(./lib/gofr-common/scripts/auth_env.sh --docker)
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
-#   ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list
+#   ./lib/gofr-common/scripts/auth_manager.sh groups list
+#   ./lib/gofr-common/scripts/auth_manager.sh tokens list
+#
+# In a dev container, Docker hostnames are auto-detected; you typically do not
+# need to pass --docker explicitly.
 #
 # SSOT PATTERN:
 #   This script automatically sources:
 #   1. lib/gofr-common/config/gofr_ports.env  (ports)
-#   2. secrets/vault_root_token               (VAULT_TOKEN via Zero-Trust Bootstrap)
+#   2. secrets/service_creds/gofr-admin-control.json (AppRole role_id/secret_id)
+#
+# It logs into Vault with the admin-control AppRole and exports:
+#   GOFR_VAULT_URL, GOFR_VAULT_TOKEN, GOFR_AUTH_BACKEND
 #
 #   JWT signing secret is read from Vault at runtime by JwtSecretProvider
 #   in auth_manager.py -- no env var needed.
-#
-#   For the simplest flow, use auth_env.sh first:
-#   source <(./lib/gofr-common/scripts/auth_env.sh --docker)
 #
 # COMMANDS:
 #   See: python lib/gofr-common/scripts/auth_manager.py --help
@@ -27,8 +28,11 @@
 
 set -euo pipefail
 
-# Default values
+# Default values (auto-detect dev container)
 USE_DOCKER=false
+if [[ -f "/.dockerenv" ]] || [[ -n "${DEVCONTAINER:-}" ]] || [[ -n "${REMOTE_CONTAINERS:-}" ]]; then
+  USE_DOCKER=true
+fi
 
 # Parse wrapper flags (before passing to Python)
 while [[ $# -gt 0 ]]; do
@@ -42,40 +46,35 @@ while [[ $# -gt 0 ]]; do
 Auth Manager Wrapper - SSOT Environment Handler
 
 USAGE:
-  auth_manager.sh --docker <command> [args...]
+  auth_manager.sh [--docker] <command> [args...]
 
 OPTIONS:
-  --docker          Use Docker hostnames (required in dev container)
+  --docker          Use Docker hostnames (default: auto-detected in containers)
   --help, -h        Show this help
 
 EXAMPLES:
-  # Recommended: use auth_env.sh first (one-liner)
-  source <(./lib/gofr-common/scripts/auth_env.sh --docker) && \\
-    ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
-
   # List groups:
-  ./lib/gofr-common/scripts/auth_manager.sh --docker groups list
+  ./lib/gofr-common/scripts/auth_manager.sh groups list
 
   # List tokens:
-  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list
+  ./lib/gofr-common/scripts/auth_manager.sh tokens list
 
   # Create admin token:
-  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens create --groups admin --name dev-api
+  ./lib/gofr-common/scripts/auth_manager.sh tokens create --groups admin --name dev-api
 
   # List tokens filtered by name pattern:
-  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens list --name-pattern "prod-*"
+  ./lib/gofr-common/scripts/auth_manager.sh tokens list --name-pattern "prod-*"
 
   # Inspect token:
-  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens inspect eyJhbGc...
+  ./lib/gofr-common/scripts/auth_manager.sh tokens inspect eyJhbGc...
 
   # Inspect by name:
-  ./lib/gofr-common/scripts/auth_manager.sh --docker tokens inspect --name dev-api
+  ./lib/gofr-common/scripts/auth_manager.sh tokens inspect --name dev-api
 
 ENVIRONMENT:
-  Recommended: source <(./lib/gofr-common/scripts/auth_env.sh --docker) first.
-  This auto-loads:
-    - VAULT_ADDR (with --docker, uses gofr-vault hostname)
-    - VAULT_TOKEN (short-lived operator token, not root)
+  This wrapper is self-contained. It reads AppRole credentials from:
+    - secrets/service_creds/gofr-admin-control.json
+    - lib/gofr-common/secrets/service_creds/gofr-admin-control.json (fallback)
 
 For full command reference, run:
   python lib/gofr-common/scripts/auth_manager.py --help
@@ -102,7 +101,7 @@ ADMIN_ROLE_NAME="gofr-admin-control"
 
 if [[ ! -f "${PORTS_ENV}" ]]; then
     echo "ERROR: Port config not found: ${PORTS_ENV}" >&2
-    echo "Run: ./scripts/generate_envs.sh" >&2
+  echo "Recovery: ensure gofr-common submodule is initialised and ports env exists." >&2
     exit 1
 fi
 
@@ -127,7 +126,7 @@ if [[ ! -f "${ADMIN_CREDS_FILE}" ]]; then
 fi
 
 if [[ ! -f "${ADMIN_CREDS_FILE}" ]]; then
-  echo "❌ ERROR: Admin AppRole credentials file is missing" >&2
+  echo "ERROR: Admin AppRole credentials file is missing" >&2
   echo "   Cause: hard cutover requires admin-control role credentials" >&2
   echo "   Context: expected ${SECRETS_DIR}/service_creds/${ADMIN_ROLE_NAME}.json or ${FALLBACK_SECRETS_DIR}/service_creds/${ADMIN_ROLE_NAME}.json" >&2
   echo "   Recovery: run uv run scripts/setup_approle.py to provision ${ADMIN_ROLE_NAME}" >&2
@@ -144,7 +143,7 @@ print(payload.get("secret_id", ""))
 ' "${ADMIN_CREDS_FILE}")
 
 if [[ "${#ADMIN_CREDS[@]}" -lt 2 ]] || [[ -z "${ADMIN_CREDS[0]}" ]] || [[ -z "${ADMIN_CREDS[1]}" ]]; then
-  echo "❌ ERROR: Admin AppRole credentials are invalid" >&2
+  echo "ERROR: Admin AppRole credentials are invalid" >&2
   echo "   Cause: missing role_id and/or secret_id" >&2
   echo "   Context: file=${ADMIN_CREDS_FILE}" >&2
   echo "   Recovery: re-run uv run scripts/setup_approle.py to refresh ${ADMIN_ROLE_NAME} credentials" >&2
@@ -166,7 +165,7 @@ vault_approle_login() {
 
   local vault_container="gofr-vault"
   if ! docker ps --format '{{.Names}}' | grep -q "^${vault_container}$"; then
-    echo "❌ ERROR: Cannot authenticate admin AppRole to Vault" >&2
+    echo "ERROR: Cannot authenticate admin AppRole to Vault" >&2
     echo "   Cause: vault CLI not installed and ${vault_container} container not running" >&2
     echo "   Context: GOFR_VAULT_URL=${vault_url}, role=${ADMIN_ROLE_NAME}" >&2
     echo "   Recovery: install vault CLI or start Vault: ./lib/gofr-common/scripts/manage_vault.sh start" >&2
@@ -178,7 +177,7 @@ vault_approle_login() {
 
 APPROLE_LOGIN_JSON="$(vault_approle_login "${GOFR_VAULT_URL}" "${GOFR_VAULT_ROLE_ID}" "${GOFR_VAULT_SECRET_ID}" 2>/dev/null || true)"
 if [[ -z "${APPROLE_LOGIN_JSON}" ]]; then
-  echo "❌ ERROR: Failed to authenticate with admin AppRole" >&2
+  echo "ERROR: Failed to authenticate with admin AppRole" >&2
   echo "   Cause: Vault login returned no response" >&2
   echo "   Context: GOFR_VAULT_URL=${GOFR_VAULT_URL}, role=${ADMIN_ROLE_NAME}" >&2
   echo "   Recovery: reprovision credentials with uv run scripts/setup_approle.py" >&2
@@ -193,7 +192,7 @@ print(payload.get("auth", {}).get("client_token", ""))
 ' <<<"${APPROLE_LOGIN_JSON}")"
 
 if [[ -z "${GOFR_VAULT_TOKEN}" ]]; then
-  echo "❌ ERROR: Failed to extract Vault client token from AppRole login" >&2
+  echo "ERROR: Failed to extract Vault client token from AppRole login" >&2
   echo "   Cause: Vault response missing auth.client_token" >&2
   echo "   Context: role=${ADMIN_ROLE_NAME}, creds_file=${ADMIN_CREDS_FILE}" >&2
   echo "   Recovery: regenerate credentials via uv run scripts/setup_approle.py" >&2
