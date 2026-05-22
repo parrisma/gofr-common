@@ -22,8 +22,11 @@ from gofr_common.web.middleware import (
     AuthHeaderMiddleware,
     RequestLoggingMiddleware,
     get_auth_header_from_context,
+    get_request_headers_from_context,
     reset_auth_header_context,
+    reset_request_headers_context,
     set_auth_header_context,
+    set_request_headers_context,
 )
 
 __all__ = [
@@ -35,8 +38,11 @@ __all__ = [
     "AuthHeaderMiddleware",
     "RequestLoggingMiddleware",
     "get_auth_header_from_context",
+    "get_request_headers_from_context",
     "set_auth_header_context",
+    "set_request_headers_context",
     "reset_auth_header_context",
+    "reset_request_headers_context",
     # Health checks
     "create_health_routes",
     "create_ping_response",

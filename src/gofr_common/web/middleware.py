@@ -9,6 +9,10 @@ from typing import Any, Optional
 
 # Context variable for storing Authorization header across async boundaries
 _auth_header_context: ContextVar[str] = ContextVar("auth_header", default="")
+_request_headers_context: ContextVar[dict[str, str]] = ContextVar(
+    "request_headers",
+    default={},
+)
 
 
 def get_auth_header_from_context() -> str:
@@ -26,6 +30,14 @@ def get_auth_header_from_context() -> str:
     return _auth_header_context.get()
 
 
+def get_request_headers_from_context() -> dict[str, str]:
+    """Get request headers from the current request context.
+
+    Header names are normalised to lowercase.
+    """
+    return dict(_request_headers_context.get())
+
+
 def set_auth_header_context(value: str) -> Any:
     """Set the Authorization header in the current request context.
 
@@ -38,6 +50,11 @@ def set_auth_header_context(value: str) -> Any:
     return _auth_header_context.set(value)
 
 
+def set_request_headers_context(value: dict[str, str]) -> Any:
+    """Set request headers in the current request context."""
+    return _request_headers_context.set(dict(value))
+
+
 def reset_auth_header_context(token: Any) -> None:
     """Reset the Authorization header context to previous value.
 
@@ -45,6 +62,11 @@ def reset_auth_header_context(token: Any) -> None:
         token: The token returned from set_auth_header_context
     """
     _auth_header_context.reset(token)
+
+
+def reset_request_headers_context(token: Any) -> None:
+    """Reset request headers context to previous value."""
+    _request_headers_context.reset(token)
 
 
 class AuthHeaderMiddleware:
@@ -80,16 +102,22 @@ class AuthHeaderMiddleware:
         """
         if scope["type"] == "http":
             # Extract Authorization header from request
-            headers = dict(scope.get("headers", []))
-            auth_header = headers.get(b"authorization", b"").decode("utf-8")
+            raw_headers = dict(scope.get("headers", []))
+            headers = {
+                key.decode("utf-8").lower(): value.decode("utf-8")
+                for key, value in raw_headers.items()
+            }
+            auth_header = headers.get("authorization", "")
 
             # Set in context
-            token = set_auth_header_context(auth_header)
+            auth_token = set_auth_header_context(auth_header)
+            headers_token = set_request_headers_context(headers)
             try:
                 await self.app(scope, receive, send)
             finally:
                 # Reset context after request completes
-                reset_auth_header_context(token)
+                reset_request_headers_context(headers_token)
+                reset_auth_header_context(auth_token)
         else:
             # Pass through non-HTTP requests (websocket, lifespan, etc.)
             await self.app(scope, receive, send)
