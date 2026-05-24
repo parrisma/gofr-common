@@ -64,6 +64,7 @@ class GofrSecClientSettings:
     """Environment-backed settings for the shared gofr-sec runtime client."""
 
     base_url: str | None = None
+    token_issuer: str = "gofr-sec"
     request_timeout_seconds: int = 5
     authz_cache_ttl_seconds: int = 30
     public_key_cache_ttl_seconds: int = 300
@@ -76,6 +77,11 @@ class GofrSecClientSettings:
         )
         return cls(
             base_url=base_url.rstrip("/") if base_url else None,
+            token_issuer=_first_env_value(
+                _prefixed_name(prefix, "SEC_TOKEN_ISSUER"),
+                "GOFR_SEC_TOKEN_ISSUER",
+            )
+            or "gofr-sec",
             request_timeout_seconds=_int_env(
                 5,
                 _prefixed_name(prefix, "SEC_REQUEST_TIMEOUT_S"),

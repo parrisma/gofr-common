@@ -53,8 +53,8 @@ class RuntimeAuthorizationRequest:
             raise ValueError("token_id is required")
         if not owner_sub:
             raise ValueError("owner_sub is required")
-        if not group and not resource:
-            raise ValueError("either group or resource must be provided")
+        if bool(group) == bool(resource):
+            raise ValueError("provide exactly one of group or resource")
 
         object.__setattr__(self, "token_id", token_id)
         object.__setattr__(self, "owner_sub", owner_sub)

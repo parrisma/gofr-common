@@ -112,7 +112,19 @@ from .oidc_verifier import (
     AccessTokenVerifier,
     VerifiedIdentity,
 )
+from .runtime_authorization import (
+    RuntimeAuthorizationFlowError,
+    RuntimeAuthorizationResult,
+    RuntimeAuthorizer,
+    authorize_runtime_token,
+    require_runtime_group,
+)
 from .runtime_config import GofrSecClientSettings, KeycloakVerifierSettings
+from .runtime_verifier import (
+    RuntimeTokenVerificationError,
+    RuntimeTokenVerifier,
+    VerifiedRuntimeToken,
+)
 from .sec_client import (
     GofrSecClient,
     GofrSecClientError,
@@ -232,6 +244,14 @@ __all__ = [
     "GofrSecClientError",
     "GofrSecClientTransportError",
     "GofrSecClientResponseError",
+    "RuntimeTokenVerifier",
+    "RuntimeTokenVerificationError",
+    "VerifiedRuntimeToken",
+    "RuntimeAuthorizer",
+    "RuntimeAuthorizationResult",
+    "RuntimeAuthorizationFlowError",
+    "authorize_runtime_token",
+    "require_runtime_group",
     "RuntimeAuthorizationRequest",
     "RuntimeAuthorizationDecision",
     # Middleware (global state - backward compatible)

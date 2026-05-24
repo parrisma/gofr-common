@@ -42,6 +42,7 @@ class TestRuntimeSettings:
 
     def test_gofr_sec_client_settings_fall_back_to_global_values(self, monkeypatch):
         monkeypatch.setenv("GOFR_SEC_BASE_URL", "https://sec.example/")
+        monkeypatch.setenv("GOFR_SEC_TOKEN_ISSUER", "https://sec.example/issuer")
         monkeypatch.setenv("GOFR_SEC_REQUEST_TIMEOUT_S", "9")
         monkeypatch.setenv("GOFR_SEC_AUTHZ_CACHE_TTL_S", "45")
         monkeypatch.setenv("GOFR_SEC_PUBLIC_KEY_CACHE_TTL_S", "600")
@@ -49,6 +50,7 @@ class TestRuntimeSettings:
         settings = GofrSecClientSettings.from_env("GOFR_PLOT")
 
         assert settings.base_url == "https://sec.example"
+        assert settings.token_issuer == "https://sec.example/issuer"
         assert settings.request_timeout_seconds == 9
         assert settings.authz_cache_ttl_seconds == 45
         assert settings.public_key_cache_ttl_seconds == 600
@@ -124,5 +126,14 @@ class TestGofrSecClient:
             client.close()
 
     def test_runtime_authorization_request_requires_group_or_resource(self):
-        with pytest.raises(ValueError, match="either group or resource"):
+        with pytest.raises(ValueError, match="exactly one of group or resource"):
             RuntimeAuthorizationRequest(token_id="token-1", owner_sub="user-1")
+
+    def test_runtime_authorization_request_rejects_group_and_resource_together(self):
+        with pytest.raises(ValueError, match="exactly one of group or resource"):
+            RuntimeAuthorizationRequest(
+                token_id="token-1",
+                owner_sub="user-1",
+                group="plot.read",
+                resource="plot.read",
+            )
