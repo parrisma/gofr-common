@@ -4,6 +4,71 @@
 
 The `gofr_common.auth` module provides JWT-based authentication with multi-group access control for GOFR microservices. This document is designed for LLM-assisted integration and migration from the previous single-group token system.
 
+It also now provides the shared runtime-security primitives needed for the
+`gofr-sec` rollout:
+
+- Keycloak/OpenID discovery via `KeycloakDiscoveryClient`
+- cached JWKS retrieval via `JwksCache`
+- access-token verification via `AccessTokenVerifier`
+- a runtime `gofr-sec` client via `GofrSecClient`
+- a short-lived fail-closed authz decision cache via `AuthorizationDecisionCache`
+
+---
+
+## OIDC Verification And gofr-sec Runtime Client
+
+Use the shared settings helpers to load either service-local values such as
+`GOFR_PLOT_SEC_BASE_URL` or global fallbacks such as `GOFR_SEC_BASE_URL`.
+
+```python
+from gofr_common.auth import (
+    AccessTokenVerifier,
+    AuthorizationDecisionCache,
+    AuthorizationDecisionCacheKey,
+    GofrSecClient,
+    GofrSecClientSettings,
+    KeycloakVerifierSettings,
+    RuntimeAuthorizationRequest,
+)
+
+verifier_settings = KeycloakVerifierSettings.from_env("GOFR_PLOT")
+verifier = AccessTokenVerifier.from_settings(verifier_settings)
+
+identity = verifier.verify(access_token)
+
+sec_settings = GofrSecClientSettings.from_env("GOFR_PLOT")
+sec_client = GofrSecClient.from_settings(sec_settings)
+
+decision = sec_client.authorize(
+    RuntimeAuthorizationRequest(
+        token_id="token-123",
+        owner_sub=identity.subject,
+        group="plot.read",
+    )
+)
+
+cache = AuthorizationDecisionCache(ttl_seconds=sec_settings.authz_cache_ttl_seconds)
+cache.put(
+    key=AuthorizationDecisionCacheKey(token_id="token-123", group="plot.read"),
+    allowed=decision.allowed,
+    token_expires_at=identity.expires_at,
+)
+```
+
+Supported environment variables for these shared helpers:
+
+- `{PREFIX}_KEYCLOAK_ISSUER_URL` or `GOFR_KEYCLOAK_ISSUER_URL`
+- `{PREFIX}_KEYCLOAK_AUDIENCE` or `GOFR_KEYCLOAK_AUDIENCE`
+- `{PREFIX}_KEYCLOAK_REQUEST_TIMEOUT_S` or `GOFR_KEYCLOAK_REQUEST_TIMEOUT_S`
+- `{PREFIX}_KEYCLOAK_JWKS_CACHE_TTL_S` or `GOFR_KEYCLOAK_JWKS_CACHE_TTL_S`
+- `{PREFIX}_SEC_BASE_URL` or `GOFR_SEC_BASE_URL`
+- `{PREFIX}_SEC_REQUEST_TIMEOUT_S` or `GOFR_SEC_REQUEST_TIMEOUT_S`
+- `{PREFIX}_SEC_AUTHZ_CACHE_TTL_S` or `GOFR_SEC_AUTHZ_CACHE_TTL_S`
+- `{PREFIX}_SEC_PUBLIC_KEY_CACHE_TTL_S` or `GOFR_SEC_PUBLIC_KEY_CACHE_TTL_S`
+
+These helpers stay generic on purpose: they do not encode GOFR-specific group
+rules or any reserved-group semantics.
+
 ---
 
 ## Key Concepts

@@ -7,6 +7,9 @@
 ## What It Provides
 
 *   **Security**: A unified login and permission system (using JWT and Vault).
+	It also now includes shared Keycloak/OIDC verification helpers, a `gofr-sec`
+	runtime client, and a short-lived authorization decision cache for service
+	integrations.
 *   **Safety**: Automated backup tools for databases and critical files.
 *   **Consistency**: Standardized ways to handle settings, logs, and network ports.
 *   **Reliability**: Common error handling and web server protections.

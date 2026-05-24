@@ -87,6 +87,7 @@ export PYTHONPATH="${PROJECT_ROOT}/src:${PYTHONPATH:-}"
 export GOFR_COMMON_ENV="TEST"
 export GOFR_COMMON_JWT_SECRET="test-secret-key-for-secure-testing-do-not-use-in-production"
 export GOFR_COMMON_LOG_LEVEL="DEBUG"
+export GOFR_TEST_JWT_SECRET="${GOFR_TEST_JWT_SECRET:-gofr-dev-jwt-secret-shared-across-all-services}"
 
 # Load port configuration from .env and apply test overrides
 PORTS_CONFIG="${PROJECT_ROOT}/config/gofr_ports.env"
@@ -226,6 +227,12 @@ start_vault_test_container() {
         -e VAULT_TOKEN="${VAULT_TEST_TOKEN}" \
         "${VAULT_CONTAINER_NAME}" \
         vault secrets enable -path=secret -version=2 kv 2>/dev/null || true
+
+    docker exec -e VAULT_ADDR="http://127.0.0.1:${VAULT_INTERNAL_PORT}" \
+        -e VAULT_TOKEN="${VAULT_TEST_TOKEN}" \
+        "${VAULT_CONTAINER_NAME}" \
+        vault kv put secret/gofr/config/jwt-signing-secret \
+        value="${GOFR_TEST_JWT_SECRET}" >/dev/null
 
     # Set environment variables for tests
     if is_running_in_docker; then

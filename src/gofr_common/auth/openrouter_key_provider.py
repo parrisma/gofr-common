@@ -55,7 +55,7 @@ class OpenRouterKeyProvider:
                 raise RuntimeError(
                     "OpenRouter API key missing in Vault. "
                     f"Expected a KV v2 secret at '{full_path}' with field 'value'. "
-                    "\n\nHow it should get there:" 
+                    "\n\nHow it should get there:"
                     "\n- Prod/dev: write the key to Vault (example: `vault kv put "
                     + full_path
                     + " value=sk-or-v1-...`)."

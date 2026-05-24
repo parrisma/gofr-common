@@ -44,6 +44,13 @@ Usage:
         ...
 """
 
+from .authz_cache import (
+    AuthorizationDecisionCache,
+    AuthorizationDecisionCacheEntry,
+    AuthorizationDecisionCacheError,
+    AuthorizationDecisionCacheKey,
+    AuthorizationDecisionCacheMissError,
+)
 from .backends import (
     FactoryError,
     GroupStore,
@@ -86,6 +93,33 @@ from .groups import (
     GroupRegistry,
     GroupRegistryError,
     ReservedGroupError,
+)
+from .jwks_cache import (
+    JwksCache,
+    JwksCacheConfigurationError,
+    JwksCacheError,
+    JwksDocument,
+    JwksKeyNotFoundError,
+)
+from .keycloak_discovery import (
+    KeycloakDiscoveryClient,
+    KeycloakDiscoveryConfigurationError,
+    KeycloakDiscoveryDocument,
+    KeycloakDiscoveryError,
+)
+from .oidc_verifier import (
+    AccessTokenVerificationError,
+    AccessTokenVerifier,
+    VerifiedIdentity,
+)
+from .runtime_config import GofrSecClientSettings, KeycloakVerifierSettings
+from .sec_client import (
+    GofrSecClient,
+    GofrSecClientError,
+    GofrSecClientResponseError,
+    GofrSecClientTransportError,
+    RuntimeAuthorizationDecision,
+    RuntimeAuthorizationRequest,
 )
 
 try:
@@ -175,6 +209,31 @@ __all__ = [
     "GroupAccessDeniedError",
     "AuthenticationError",
     "FingerprintMismatchError",
+    "AuthorizationDecisionCache",
+    "AuthorizationDecisionCacheEntry",
+    "AuthorizationDecisionCacheError",
+    "AuthorizationDecisionCacheKey",
+    "AuthorizationDecisionCacheMissError",
+    "KeycloakDiscoveryClient",
+    "KeycloakDiscoveryConfigurationError",
+    "KeycloakDiscoveryDocument",
+    "KeycloakDiscoveryError",
+    "JwksCache",
+    "JwksCacheConfigurationError",
+    "JwksCacheError",
+    "JwksDocument",
+    "JwksKeyNotFoundError",
+    "AccessTokenVerifier",
+    "AccessTokenVerificationError",
+    "VerifiedIdentity",
+    "KeycloakVerifierSettings",
+    "GofrSecClientSettings",
+    "GofrSecClient",
+    "GofrSecClientError",
+    "GofrSecClientTransportError",
+    "GofrSecClientResponseError",
+    "RuntimeAuthorizationRequest",
+    "RuntimeAuthorizationDecision",
     # Middleware (global state - backward compatible)
     "get_auth_service",
     "verify_token",
