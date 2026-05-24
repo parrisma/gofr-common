@@ -59,8 +59,8 @@ cd lib/gofr-common
 If you cannot use the script, these are the individual commands required:
 
 1.  **Initialize Submodules**: `git submodule update --init --recursive`
-2.  **Build Base**: `docker build -f docker/Dockerfile.base -t gofr-base:latest .` (in `lib/gofr-common`)
-3.  **Build Vault**: `./docker/build-vault.sh`
+2.  **Build Base**: `./docker/base/build.sh` (in `lib/gofr-common`)
+3.  **Build Vault**: `./docker/vault/build.sh --prod`
 4.  **Create Networks**: `docker network create gofr-net`
 5.  **Bootstrap Vault**: `cd lib/gofr-common && ./scripts/manage_vault.sh bootstrap`
 6.  **Seed Volumes**: `./scripts/migrate_secrets_to_volume.sh`

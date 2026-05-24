@@ -4,7 +4,7 @@
 # cross-project consistency work.
 #
 # Image source:
-#   - gofr-dig/lib/gofr-common/docker/Dockerfile.dev
+#   - gofr-dig/lib/gofr-common/docker/base/Dockerfile.dev
 #
 # Usage:
 #   - Run from /home/gofr/devroot (recommended), OR pass --workspace-root
@@ -81,7 +81,7 @@ REPO_IQ="${WORKSPACE_ROOT}/gofr-iq"
 REPO_CONSOLE="${WORKSPACE_ROOT}/gofr-console"
 
 GOFR_COMMON_HOST_DIR="${REPO_DIG}/lib/gofr-common"
-GOFR_COMMON_DOCKERFILE="${GOFR_COMMON_HOST_DIR}/docker/Dockerfile.dev"
+GOFR_COMMON_DOCKERFILE="${GOFR_COMMON_HOST_DIR}/docker/base/Dockerfile.dev"
 
 echo "======================================================================="
 echo "Starting GOFR Dev Master Container"
@@ -169,14 +169,13 @@ _require_dir "$REPO_CONSOLE" "gofr-console"
 _require_dir "$GOFR_COMMON_HOST_DIR" "gofr-common (as submodule under gofr-dig/lib/gofr-common)"
 _require_file "$GOFR_COMMON_DOCKERFILE" "gofr-common dev Dockerfile missing"
 
-# Ensure base image exists (required by Dockerfile.dev)
+# Ensure base image exists (required by docker/base/Dockerfile.dev)
 if ! docker image inspect gofr-base:latest >/dev/null 2>&1; then
     echo ""
-    echo "ERROR: Base image gofr-base:latest not found."
-    echo "  Cause: gofr-common Dockerfile.dev is FROM gofr-base:latest"
-    echo "  Recovery: build it first: cd ${GOFR_COMMON_HOST_DIR}/docker && ./build-base.sh"
+    echo "Base image gofr-base:latest not found - building now..."
+    echo "  Cause: gofr-common docker/base/Dockerfile.dev is FROM gofr-base:latest"
+    bash "${GOFR_COMMON_HOST_DIR}/docker/base/build.sh"
     echo ""
-    exit 1
 fi
 
 # Build image if missing

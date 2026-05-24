@@ -251,10 +251,10 @@ build_base_image() {
     return 1
   fi
 
-  if [[ -f "${COMMON_ROOT}/docker/build-base.sh" ]]; then
-    (cd "${COMMON_ROOT}/docker" && bash build-base.sh)
+  if [[ -f "${COMMON_ROOT}/docker/base/build.sh" ]]; then
+    (cd "${COMMON_ROOT}" && bash docker/base/build.sh)
   else
-    (cd "${COMMON_ROOT}" && docker build -f docker/Dockerfile.base -t gofr-base:latest .)
+    (cd "${COMMON_ROOT}" && docker build -f docker/base/Dockerfile -t gofr-base:latest .)
   fi
 
   ok "Base image built: gofr-base:latest"
@@ -273,17 +273,17 @@ build_vault_image() {
     return 1
   fi
 
-  local project_build="${PROJECT_ROOT}/docker/build-vault.sh"
+  local project_build="${PROJECT_ROOT}/docker/vault/build.sh"
   if [[ -f "$project_build" ]]; then
     (cd "${PROJECT_ROOT}" && bash "$project_build")
     ok "Vault image built via project script."
     return 0
   fi
 
-  warn "Project build-vault.sh not found. Using common Dockerfile.vault instead."
+  warn "Project docker/vault/build.sh not found. Using common docker/vault/build.sh instead."
   warn "If this fails due to BuildKit requirements, use your project script instead."
-  (cd "${COMMON_ROOT}" && docker build -f docker/Dockerfile.vault -t gofr-vault:latest .)
-  ok "Vault image built via common Dockerfile."
+  (cd "${COMMON_ROOT}" && bash docker/vault/build.sh --prod)
+  ok "Vault image built via common build script."
 }
 
 ensure_networks() {

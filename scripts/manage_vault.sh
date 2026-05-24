@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COMPOSE_FILE="${PROJECT_ROOT}/docker/vault-compose.yml"
+COMPOSE_FILE="${PROJECT_ROOT}/docker/vault/compose.yml"
 SECRETS_DIR="${PROJECT_ROOT}/secrets"
 DATA_DIR="${PROJECT_ROOT}/data/vault"
 CONTAINER_NAME="gofr-vault"
@@ -498,7 +498,7 @@ bootstrap() {
   if ! docker images | grep -q "gofr-vault.*latest"; then
     log "Building Vault image..."
     cd "${PROJECT_ROOT}"
-    docker build -f docker/Dockerfile.vault -t gofr-vault:latest .
+    bash docker/vault/build.sh --prod
   else
     log "Vault image exists"
   fi

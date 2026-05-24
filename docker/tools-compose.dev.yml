@@ -1,0 +1,86 @@
+name: gofr-tools-dev
+
+services:
+  openwebui:
+    image: gofr-openwebui:dev
+    container_name: gofr-openwebui
+    hostname: gofr-openwebui
+    restart: unless-stopped
+    ports:
+      # OpenWebUI web UI.
+      - "${GOFR_OPENWEBUI_PORT_DEV}:8080"
+    volumes:
+      - gofr-openwebui-data:/app/backend/data
+    environment:
+      - WEBUI_AUTH=true
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-}
+      - WEBUI_URL=http://localhost:${GOFR_OPENWEBUI_PORT_DEV}
+      - ENABLE_SIGNUP=true
+      - ENABLE_OLLAMA_API=false
+      - ENABLE_OPENAI_API=true
+      - OPENAI_API_BASE_URL=https://openrouter.ai/api/v1
+      - OPENAI_API_KEY=${OPENROUTER_API_KEY:-}
+    networks:
+      - gofr-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  n8n:
+    image: gofr-n8n:dev
+    container_name: gofr-n8n
+    hostname: gofr-n8n
+    restart: unless-stopped
+    ports:
+      # n8n editor and webhook UI.
+      - "${GOFR_N8N_PORT_DEV}:5678"
+    volumes:
+      - gofr-n8n-data:/home/node/.n8n
+      - gofr-n8n-logs:/var/log/n8n
+      - /tmp:/home/node/user_data
+    environment:
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_SECURE_COOKIE=false
+      - WEBHOOK_URL=http://localhost:${GOFR_N8N_PORT_DEV}/
+      - GENERIC_TIMEZONE=UTC
+      - N8N_LOG_LEVEL=info
+      - N8N_LOG_OUTPUT=console,file
+      - N8N_LOG_FILE_LOCATION=/var/log/n8n
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-}
+      - N8N_RESTRICT_FILE_ACCESS_TO=/home/node/.n8n-files;/home/node/user_data
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+    networks:
+      - gofr-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  gofr-net:
+    name: gofr-net
+    external: true
+
+volumes:
+  gofr-openwebui-data:
+    name: gofr-openwebui-data
+    external: true
+  gofr-n8n-data:
+    name: gofr-n8n-data
+    external: true
+  gofr-n8n-logs:
+    name: gofr-n8n-logs
+    external: true

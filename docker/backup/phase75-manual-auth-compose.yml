@@ -1,0 +1,55 @@
+name: gofr-phase75
+
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.1.4
+    container_name: gofr-sec-keycloak
+    hostname: gofr-sec-keycloak
+    restart: unless-stopped
+    command:
+      - start-dev
+      - --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${GOFR_PHASE75_KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${GOFR_PHASE75_KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      - "${GOFR_PHASE75_KEYCLOAK_PORT:-18080}:8080"
+    volumes:
+      - ./keycloak/gofr-dev-realm.json:/opt/keycloak/data/import/gofr-dev-realm.json:ro
+    networks:
+      - gofr-net
+
+  vault:
+    image: hashicorp/vault:1.15.4
+    container_name: gofr-sec-vault
+    hostname: gofr-sec-vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    command:
+      - server
+      - -dev
+      - -dev-root-token-id=${GOFR_PHASE75_VAULT_TOKEN:-gofr-dev-root-token}
+      - -dev-listen-address=0.0.0.0:8200
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://gofr-sec-vault:8200
+      VAULT_DEV_ROOT_TOKEN_ID: ${GOFR_PHASE75_VAULT_TOKEN:-gofr-dev-root-token}
+      SKIP_SETCAP: "true"
+    ports:
+      - "${GOFR_PHASE75_VAULT_PORT:-8306}:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - gofr-net
+
+networks:
+  gofr-net:
+    external: true
+    name: gofr-net

@@ -205,7 +205,7 @@ All 11 phases successfully implemented:
 ### Step 5.1: Create Vault Docker Infrastructure
 - [x] Create `docker/infra/vault/` directory
 - [x] Create `Dockerfile` - based on official hashicorp/vault image
-- [x] Create `vault-config.hcl` - file storage backend config for prod
+- [x] Create `docker/vault/config.hcl` - file storage backend config for prod
 - [x] Create `build.sh` - build script
 - [x] Create `run.sh` - run with `--test` (ephemeral) or `--prod` (persistent) modes
 - [x] Create `stop.sh` - stop script

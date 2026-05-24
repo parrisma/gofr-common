@@ -263,10 +263,10 @@ show_config_file() {
 }
 
 show_config_file "Ports Configuration" "${COMMON_ROOT}/config/gofr_ports.env"
-show_config_file "Docker Compose" "${COMMON_ROOT}/docker/docker-compose-tools.yml"
-show_config_file "Start Script" "${COMMON_ROOT}/docker/start-tools-prod.sh"
-show_config_file "OpenWebUI Dockerfile" "${COMMON_ROOT}/docker/Dockerfile.openwebui.prod"
-show_config_file "n8n Dockerfile" "${COMMON_ROOT}/docker/Dockerfile.n8n.prod"
+show_config_file "Docker Compose" "${COMMON_ROOT}/docker/tools-compose.dev.yml"
+show_config_file "Start Script" "${COMMON_ROOT}/docker/start-tools-dev.sh"
+show_config_file "OpenWebUI Dockerfile" "${COMMON_ROOT}/docker/openwebui/Dockerfile.prod"
+show_config_file "n8n Dockerfile" "${COMMON_ROOT}/docker/n8n/Dockerfile.prod"
 
 # Summary
 section_header "=== Summary ===" "health checks"

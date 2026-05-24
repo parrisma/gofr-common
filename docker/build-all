@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+log() {
+    printf '[build-all] %s\n' "$1"
+}
+
+build_step() {
+    local label="$1"
+    shift
+
+    log "Building ${label}"
+    "$@"
+}
+
+main() {
+    build_step 'base image' bash "${SCRIPT_DIR}/base/build.sh"
+    build_step 'Keycloak dev image' bash "${SCRIPT_DIR}/keycloak/build.sh"
+    build_step 'n8n image' bash "${SCRIPT_DIR}/n8n/build.sh"
+    build_step 'OpenWebUI image' bash "${SCRIPT_DIR}/openwebui/build.sh"
+    build_step 'Seq dev image' bash "${SCRIPT_DIR}/seq/build.sh" --dev
+    build_step 'Vault dev image' bash "${SCRIPT_DIR}/vault/build.sh" --dev
+    log 'All docker builds completed'
+}
+
+main "$@"

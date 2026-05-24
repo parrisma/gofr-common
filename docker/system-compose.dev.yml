@@ -1,0 +1,70 @@
+name: gofr-system-dev
+
+services:
+  keycloak:
+    image: gofr-keycloak:dev
+    container_name: gofr-sec-keycloak
+    hostname: gofr-sec-keycloak
+    restart: unless-stopped
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${GOFR_SEC_DEV_KEYCLOAK_ADMIN_USER:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${GOFR_SEC_DEV_KEYCLOAK_ADMIN_PASSWORD:-admin}
+      KC_HEALTH_ENABLED: "true"
+      KC_HTTP_ENABLED: "true"
+    ports:
+      # Keycloak admin console and OIDC endpoints.
+      - "${GOFR_KEYCLOAK_PORT_DEV}:8080"
+    networks:
+      - gofr-net
+
+  vault:
+    image: gofr-vault:dev
+    container_name: gofr-sec-vault
+    hostname: gofr-sec-vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://gofr-sec-vault:8200
+      VAULT_DEV_ROOT_TOKEN_ID: ${GOFR_SEC_DEV_VAULT_TOKEN:-gofr-dev-root-token}
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      SKIP_SETCAP: "true"
+    ports:
+      # Vault UI and API share the same listener.
+      - "${GOFR_VAULT_PORT_DEV}:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    networks:
+      - gofr-net
+
+  seq:
+    image: gofr-sec-seq:dev
+    container_name: gofr-sec-seq
+    hostname: gofr-sec-seq
+    restart: unless-stopped
+    ports:
+      # Seq ingestion endpoint.
+      - "${GOFR_SEQ_INGEST_PORT_DEV}:5341"
+      # Seq web UI.
+      - "${GOFR_SEQ_UI_PORT_DEV}:80"
+    environment:
+      - ACCEPT_EULA=Y
+      - SEQ_FIRSTRUN_NOAUTHENTICATION=true
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - gofr-net
+
+networks:
+  gofr-net:
+    external: true
+    name: gofr-net
